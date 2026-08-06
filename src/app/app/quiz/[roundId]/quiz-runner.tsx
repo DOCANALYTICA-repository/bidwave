@@ -86,26 +86,62 @@ export function QuizRunner({ roundId, alreadySubmitted }: { roundId: string; alr
       );
       navigator.sendBeacon("/api/quiz/submit", blob);
     }
-    // A native browser back/forward press fires `popstate` without a full
-    // document unload (Next.js serves it as a client-side route swap), so
-    // none of the three listeners above fire — the same "same-tab
-    // navigation" gap quiz-exit-guard.ts closes for the Sign-out button,
-    // just triggered by the browser chrome instead of an in-app click.
-    // Safe as fire-and-forget here: unlike sign-out, back-navigation never
-    // clears the auth session first, so there's no race to guard against.
-    function onPopState() {
-      void finalize("navigation_back");
+    // A native browser back/forward press fires neither of the three
+    // listeners above (Next.js serves it as a client-side route swap, not a
+    // document unload) — the same "same-tab navigation" gap
+    // quiz-exit-guard.ts closes for the Sign-out button, just triggered by
+    // the browser chrome instead of an in-app click. Reuses the 'navigation'
+    // reason (not a new one) — submit_quiz_attempt()'s reason allow-list
+    // (supabase/migrations/20260730050000_quiz_engine.sql) already covers
+    // this exact "same-tab client nav" category; a distinct reason string
+    // here would just need its own migration for no behavioral benefit.
+    //
+    // The legacy `popstate` event is *not* a usable signal for this in Next
+    // 16: confirmed by direct reproduction that on Chromium, App Router's
+    // client router intercepts back/forward via the Navigation API
+    // (`window.navigation`'s `navigate` event) and completes its route swap
+    // — unmounting this component and running this effect's cleanup, which
+    // removes the popstate listener — *before* the browser gets around to
+    // dispatching `popstate` to window listeners. A `popstate` handler
+    // registered here is reliably gone by the time `popstate` itself fires.
+    // The Navigation API's `navigate` event, by contrast, fires
+    // synchronously to all listeners before the intercepting listener's
+    // (necessarily async, since it RSC-fetches the previous route) work
+    // resolves — so this component is still mounted when it runs. Falls
+    // back to `popstate` on browsers without the Navigation API (Firefox,
+    // Safari as of writing — see docs/BROWSER_SUPPORT.md), where Next can't
+    // intercept this way either and the ordering problem above doesn't
+    // arise. Safe as fire-and-forget either way: unlike sign-out,
+    // back-navigation never clears the auth session first, so there's no
+    // race to guard against.
+    function onBackForward() {
+      void finalize("navigation");
+    }
+
+    const nav = (window as unknown as { navigation?: EventTarget }).navigation;
+    function onNavigate(e: Event) {
+      if ((e as unknown as { navigationType?: string }).navigationType === "traverse") {
+        onBackForward();
+      }
     }
 
     document.addEventListener("fullscreenchange", onFullscreenChange);
     document.addEventListener("visibilitychange", onVisibilityChange);
     window.addEventListener("pagehide", onPageHide);
-    window.addEventListener("popstate", onPopState);
+    if (nav) {
+      nav.addEventListener("navigate", onNavigate);
+    } else {
+      window.addEventListener("popstate", onBackForward);
+    }
     return () => {
       document.removeEventListener("fullscreenchange", onFullscreenChange);
       document.removeEventListener("visibilitychange", onVisibilityChange);
       window.removeEventListener("pagehide", onPageHide);
-      window.removeEventListener("popstate", onPopState);
+      if (nav) {
+        nav.removeEventListener("navigate", onNavigate);
+      } else {
+        window.removeEventListener("popstate", onBackForward);
+      }
     };
   }, [phase, finalize, roundId]);
 

@@ -60,11 +60,22 @@ for "impossible."
   today's one known link; a nav link added elsewhere in the shell later would need the same
   `runQuizExitGuard()` call before it navigates.
 - **The browser's native back/forward button.** This is the same class of gap as the item
-  above — a `popstate`-driven route swap fires no `visibilitychange`/`fullscreenchange`/
-  `pagehide` either — just triggered by browser chrome instead of an in-app link, so the
-  exit-guard pattern above doesn't cover it (there's no click to run the guard before). Closed
-  directly in `QuizRunner`'s exit-detection effect instead: a `popstate` listener calls the
-  same `finalize()` used by the other three signals. Safe as plain fire-and-forget here, unlike
+  above — a back/forward route swap fires no `visibilitychange`/`fullscreenchange`/`pagehide`
+  either — just triggered by browser chrome instead of an in-app link, so the exit-guard
+  pattern above doesn't cover it (there's no click to run the guard before). Closed directly
+  in `QuizRunner`'s exit-detection effect instead — but *not* via a `popstate` listener, which
+  was tried first and confirmed broken by direct reproduction: on Chromium, Next 16's App
+  Router intercepts back/forward via the Navigation API (`window.navigation`'s `navigate`
+  event) and completes its route swap — unmounting `QuizRunner` and running this effect's
+  cleanup, which removes the listener — *before* the browser dispatches the legacy `popstate`
+  event to `window` listeners at all. A `popstate` handler here is reliably gone by the time
+  `popstate` itself fires. The fix listens for the Navigation API's `navigate` event instead
+  (checking `navigationType === 'traverse'`), which fires synchronously to all listeners
+  before the intercepting listener's async work (an RSC fetch) resolves, so the component is
+  still mounted when it runs — falling back to `popstate` on browsers without the Navigation
+  API (Firefox, Safari as of writing — see `docs/BROWSER_SUPPORT.md`), where Next can't
+  intercept this way either and the ordering problem doesn't arise. Safe as plain
+  fire-and-forget here, unlike
   the Sign-out case — native back-navigation never clears the auth session first, so there's
   no race to guard against.
 

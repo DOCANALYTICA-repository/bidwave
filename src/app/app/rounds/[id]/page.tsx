@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import Link from "next/link";
 import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
 import { StatusPill, BackLink } from "@/components/bidwave";
@@ -222,12 +223,12 @@ export default async function TeamRoundPage({ params }: { params: Promise<{ id: 
         (quizAttempt?.status === "submitted" ? (
           <p className="text-sm text-ink-2">Your attempt has been submitted.</p>
         ) : (
-          <a
+          <Link
             href={`/app/quiz/${id}`}
             className="inline-flex rounded-lg bg-gold px-4 py-2 font-heading text-sm font-semibold text-primary-foreground hover:bg-gold-bright"
           >
             Go to quiz
-          </a>
+          </Link>
         ))}
 
       {score?.published && (
