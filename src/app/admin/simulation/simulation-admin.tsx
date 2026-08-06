@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Textarea } from "@/components/ui/textarea";
@@ -94,15 +94,13 @@ export function SimulationAdmin({
 }) {
   const [state, formAction, isPending] = useActionState(adminSaveSimulationConfig, simActionInitialState);
   const queryClient = useQueryClient();
-  const [lastHandledState, setLastHandledState] = useState(state);
-  if (state !== lastHandledState) {
-    setLastHandledState(state);
+  useEffect(() => {
     if (state.status === "success") {
       toast.success("Simulation configuration saved.");
       queryClient.invalidateQueries({ queryKey: ["admin", "simulation"] });
     }
     if (state.status === "error" && state.formError) toast.error(state.formError);
-  }
+  }, [state, queryClient]);
   const [rewardTeam, setRewardTeam] = useState("");
   const [rewardKind, setRewardKind] = useState<"marks" | "purse">("marks");
   const [rewardAmount, setRewardAmount] = useState("");

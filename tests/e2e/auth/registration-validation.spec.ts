@@ -25,7 +25,7 @@ async function fillStep0(page: Page, teamName: string) {
   await page.getByLabel("Team name").fill(teamName);
   await page.getByLabel("Campus").click();
   await page.getByRole("option", { name: "Bangalore" }).click();
-  await page.getByRole("button", { name: "Next" }).click();
+  await page.getByRole("button", { name: "Next", exact: true }).click();
 }
 
 type Member = { fullName: string; className: string; registerNumber: string; phone: string; christEmail: string };
@@ -40,20 +40,20 @@ async function fillStep1(page: Page, members: Member[]) {
     await page.getByLabel("CHRIST email").nth(i).fill(m.christEmail);
   }
   await page.getByRole("button", { name: "Set as captain" }).first().click();
-  await page.getByRole("button", { name: "Next" }).click();
+  await page.getByRole("button", { name: "Next", exact: true }).click();
 }
 
 async function fillStep2ThroughSubmit(page: Page) {
   await page.getByLabel("Password").fill("SuperSecret!1");
   await page.getByLabel("Confirm password").fill("SuperSecret!1");
-  await page.getByRole("button", { name: "Next" }).click();
+  await page.getByRole("button", { name: "Next", exact: true }).click();
 
   await page.locator('input[type="file"]').setInputFiles({
     name: "invoice.pdf",
     mimeType: "application/pdf",
     buffer: dummyPdf,
   });
-  await page.getByRole("button", { name: "Next" }).click();
+  await page.getByRole("button", { name: "Next", exact: true }).click();
 
   await page.getByRole("button", { name: "Complete registration" }).click();
 }

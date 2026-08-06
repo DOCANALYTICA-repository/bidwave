@@ -23,13 +23,20 @@ test.describe("auction console — reverse sale", () => {
     // Pick the LAST (oldest, since sold_at desc) still-reversible row rather
     // than the newest, matching the "reverse ANY prior sale" contract.
     const reversibleRows = page.getByRole("row").filter({ has: page.getByRole("button", { name: "Reverse…" }) });
-    const targetRow = reversibleRows.last();
-    await expect(targetRow).toBeVisible();
+    const candidateRow = reversibleRows.last();
+    await expect(candidateRow).toBeVisible();
 
-    const cells = targetRow.getByRole("cell");
+    const cells = candidateRow.getByRole("cell");
     const playerName = (await cells.nth(0).innerText()).trim();
     const teamName = (await cells.nth(1).innerText()).trim();
     const teamSlug = slugFromTeamName(teamName);
+
+    // `reversibleRows.last()` is a dynamic filter (rows that currently have
+    // a "Reverse…" button) — once this row is reversed it loses that button
+    // and drops OUT of the filter, so re-querying `.last()` afterward would
+    // silently resolve to a *different* row. Pin a stable locator by player
+    // name instead for every subsequent lookup.
+    const targetRow = page.getByRole("row", { name: playerName });
 
     // Capture the team's roster/purse before reversal, via its own dashboard.
     const teamContext = await browser.newContext();

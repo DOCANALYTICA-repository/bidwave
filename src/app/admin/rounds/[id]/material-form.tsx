@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,12 +16,10 @@ export function MaterialForm({ roundId }: { roundId: string }) {
   const [publicRelease, setPublicRelease] = useState(false);
   const [state, formAction, isPending] = useActionState(adminSaveMaterial, roundActionInitialState);
 
-  const [lastHandledState, setLastHandledState] = useState(state);
-  if (state !== lastHandledState) {
-    setLastHandledState(state);
+  useEffect(() => {
     if (state.status === "success") toast.success("Material added.");
     if (state.status === "error" && state.formError) toast.error(state.formError);
-  }
+  }, [state]);
 
   return (
     <form action={formAction} className="space-y-3 rounded-xl border border-border bg-card p-4">

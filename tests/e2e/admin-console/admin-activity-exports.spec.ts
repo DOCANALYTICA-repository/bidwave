@@ -3,15 +3,17 @@ import { loginAsAdmin } from "../fixtures";
 
 test.describe("admin activity log", () => {
   test("renders login activity rows (not live — SSR on each visit)", async ({ page }) => {
-    // loginAsAdmin itself calls login(), which logs a real "login_success"
-    // activity_events row (src/app/login/actions.ts) before this test even
-    // visits the page — so a fresh seed still has at least one real row to
-    // assert on, without needing another spec to have run first.
+    // The auth.setup.ts "setup" project performs one real login per identity
+    // before the whole suite runs, each logging a real "login_success"
+    // activity_events row (src/app/login/actions.ts) — so a fresh seed still
+    // has real rows to assert on, without needing another spec to have run
+    // first. loginAsAdmin here is a cookie-injection restore, not a real
+    // login (see fixtures.ts), so it does not itself add a new row.
     await loginAsAdmin(page);
     await page.goto("/admin/activity");
-    await expect(page.getByRole("heading", { name: "Activity" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Activity", exact: true })).toBeVisible();
 
-    await expect(page.getByText("login_success")).toBeVisible();
+    await expect(page.getByText("login_success").first()).toBeVisible();
     await expect(page.getByText("admin").first()).toBeVisible();
   });
 
@@ -20,7 +22,7 @@ test.describe("admin activity log", () => {
     await page.goto("/admin/activity");
     await expect(page.getByText("Not live — use Refresh for the latest.")).toBeVisible();
     await page.getByRole("button", { name: "Refresh" }).click();
-    await expect(page.getByText("login_success")).toBeVisible();
+    await expect(page.getByText("login_success").first()).toBeVisible();
   });
 });
 

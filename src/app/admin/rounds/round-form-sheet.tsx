@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -67,15 +67,13 @@ function RoundFormContent({
   const [state, formAction, isPending] = useActionState(adminSaveRound, roundActionInitialState);
   const queryClient = useQueryClient();
 
-  const [lastHandledState, setLastHandledState] = useState(state);
-  if (state !== lastHandledState) {
-    setLastHandledState(state);
+  useEffect(() => {
     if (state.status === "success") {
       toast.success("Round saved.");
       queryClient.invalidateQueries({ queryKey: ["admin", "rounds"] });
     }
     if (state.status === "error" && state.formError) toast.error(state.formError);
-  }
+  }, [state, queryClient]);
 
   return (
     <>

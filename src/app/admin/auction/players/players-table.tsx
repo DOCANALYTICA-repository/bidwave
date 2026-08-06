@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { DataTable, type DataTableColumn, StatusPill, Money } from "@/components/bidwave";
 import { Button } from "@/components/ui/button";
@@ -114,12 +114,10 @@ function PlayerFormContent({
 }) {
   const [state, formAction, isPending] = useActionState(adminUpsertPlayer, playerActionInitialState);
 
-  const [lastHandledState, setLastHandledState] = useState(state);
-  if (state !== lastHandledState) {
-    setLastHandledState(state);
+  useEffect(() => {
     if (state.status === "success") toast.success("Player saved.");
     if (state.status === "error" && state.formError) toast.error(state.formError);
-  }
+  }, [state]);
 
   return (
     <>

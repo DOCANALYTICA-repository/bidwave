@@ -19,7 +19,17 @@ describe("submission_not_allowed / AT-RND-02: deadline enforcement", () => {
         slug: `rnd-02-${Date.now()}`,
         sequence: 9001,
         opensAt: new Date(Date.now() - 60_000),
-        closesAt: new Date(Date.now() - 1_000), // already closed
+        // Postgres's now() is pinned at the enclosing transaction's start
+        // (withTx's `begin`), not real wall-clock time at each statement —
+        // this fixture's closesAt is computed later, via Node's Date.now(),
+        // after a couple of setup round-trips (edition lookup, team
+        // insert) to a hosted, cross-network Postgres instance. A 1-second
+        // margin isn't reliably larger than that setup latency, so the
+        // computed closesAt could end up *after* the transaction-pinned
+        // now() and the round would read as still open — confirmed by
+        // direct reproduction. 30s is comfortably larger than any realistic
+        // setup latency while still exercising "closed" enforcement.
+        closesAt: new Date(Date.now() - 30_000),
       });
 
       const rejection = await expectRejection(client, `select public.submit_round_files($1, $2, $3::jsonb)`, [

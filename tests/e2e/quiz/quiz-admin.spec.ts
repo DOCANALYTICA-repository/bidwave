@@ -31,6 +31,7 @@ test.describe("quiz admin controls", () => {
     await expect(row.getByRole("cell").nth(3)).toContainText(/open/i);
     const href = await row.getByRole("link", { name: ROUND_NAME }).getAttribute("href");
     const roundId = href!.split("/admin/rounds/")[1];
+    await page.goto(href!);
 
     await page.getByRole("tab", { name: "Quiz bank" }).click();
 

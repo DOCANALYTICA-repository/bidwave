@@ -127,7 +127,12 @@ export async function acquireRecordLock(
   if (error) {
     const parsed = parseRpcErrorCode(error.message);
     const detail = parseRpcErrorDetail(error.details);
-    return { error: parsed?.message ?? error.message, detail };
+    // console-lock-badge.tsx's only caller checks `result.error === "record_locked"`
+    // (the code, not the human message) to decide whether to show the "being
+    // edited elsewhere" badge — returning the message here instead of the code
+    // meant that check could never match, so the badge silently never appeared
+    // for a real lock conflict. Confirmed by direct e2e reproduction.
+    return { error: parsed?.code ?? error.message, detail };
   }
   const result = data as { session_token: string; ttl_seconds: number };
   return { sessionToken: result.session_token, ttlSeconds: result.ttl_seconds };

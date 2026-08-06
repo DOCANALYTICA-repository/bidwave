@@ -51,3 +51,6 @@ next-env.d.ts
 # reference material (PRD, brochure, raw logo originals) — archived locally,
 # not versioned: large binaries, not application source.
 /reference/
+
+# Playwright auth storage states (session cookies, per-run — gitignored, not secrets, just noise)
+/tests/e2e/.auth/

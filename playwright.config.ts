@@ -6,8 +6,16 @@ import { defineConfig, devices } from "@playwright/test";
  * see CLAUDE.md). globalSetup/globalTeardown reset the event edition to a
  * deterministic fixture using the same seed:demo/unseed:demo scripts the
  * manual QA passes already use, so specs can log in with known accounts
- * instead of registering a fresh team every time (registration.spec.ts is
- * the one spec that deliberately walks the real UI instead).
+ * instead of registering a fresh team every time (the registration specs
+ * are the ones that deliberately walk the real UI instead).
+ *
+ * The "setup" project (tests/e2e/auth.setup.ts) logs in once per identity
+ * and saves a storageState; the "chromium" project depends on it and most
+ * specs reuse those saved sessions via `test.use({ storageState: ... })`
+ * instead of submitting the real login form per test. This isn't just
+ * speed — SEC-10 rate-limits login to 20/900s per IP, and a form-login-per-
+ * test suite this size blew through that budget on the first full run,
+ * failing most of the suite on an unrelated 429 rather than any real bug.
  */
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -27,8 +35,14 @@ export default defineConfig({
   },
   projects: [
     {
+      name: "setup",
+      testMatch: /auth\.setup\.ts/,
+      use: { ...devices["Desktop Chrome"] },
+    },
+    {
       name: "chromium",
       use: { ...devices["Desktop Chrome"] },
+      dependencies: ["setup"],
     },
   ],
   webServer: {

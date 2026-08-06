@@ -16,7 +16,8 @@ test.describe("landing page", () => {
     await expect(page.getByText("17–19 August 2026 · Department of Commerce, CHRIST University")).toBeVisible();
 
     // Logged out -> dashboardHref is undefined -> CTA reads "Register your team" and links to /register.
-    const registerCta = page.getByRole("link", { name: "Register your team" });
+    // Two such CTAs exist on this page (Hero + RegistrationCtaSection further down).
+    const registerCta = page.getByRole("link", { name: "Register your team" }).first();
     await expect(registerCta).toBeVisible();
     await expect(registerCta).toHaveAttribute("href", "/register");
   });

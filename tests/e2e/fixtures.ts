@@ -1,4 +1,6 @@
-import type { Page } from "@playwright/test";
+import fs from "fs";
+import path from "path";
+import type { Cookie, Page } from "@playwright/test";
 
 /** Matches scripts/seed-demo.cjs exactly — keep in sync if that script changes. */
 export const DEMO_PASSWORD = "BidwaveDemo!1";
@@ -27,10 +29,45 @@ export async function loginAs(page: Page, email: string, password = DEMO_PASSWOR
   await page.waitForURL((url) => !url.pathname.startsWith("/login"));
 }
 
+/**
+ * Saved-session paths, written once by auth.setup.ts (the "setup" project —
+ * see playwright.config.ts), each holding one real login's cookies.
+ */
+export function adminStoragePath() {
+  return path.join(__dirname, ".auth", "admin.json");
+}
+
+export function teamStoragePath(slug: (typeof TEAM_SLUGS)[number]) {
+  return path.join(__dirname, ".auth", `team-${slug}.json`);
+}
+
+/**
+ * Restores a saved session onto the given page's context by injecting its
+ * cookies directly — no HTTP request, no form submission. `@supabase/ssr`'s
+ * browser client keeps the session in cookies (not localStorage), which is
+ * the whole point of that package existing (server-readable sessions for
+ * SSR/middleware), so cookies alone are sufficient to restore it.
+ *
+ * loginAsAdmin/loginAsTeam use this instead of a real form submission
+ * (which is what they did originally) specifically because SEC-10
+ * rate-limits `login` to 20 attempts/900s per IP, and every Playwright
+ * request in this suite shares one IP — a form-login-per-test suite this
+ * size blew through that budget almost immediately on the first full run,
+ * failing most of the suite on an unrelated 429 rather than any real app
+ * bug. Every call site (`await loginAsAdmin(page)` / `await loginAsTeam(page,
+ * slug)`) is unchanged; only what happens inside changed. Specs testing the
+ * login/registration act itself (login.spec.ts, the registration specs)
+ * still submit the real form directly, since that's what they verify.
+ */
+async function restoreSession(page: Page, storagePath: string) {
+  const state = JSON.parse(fs.readFileSync(storagePath, "utf-8")) as { cookies: Cookie[] };
+  await page.context().addCookies(state.cookies);
+}
+
 export async function loginAsAdmin(page: Page) {
-  await loginAs(page, ADMIN_EMAIL);
+  await restoreSession(page, adminStoragePath());
 }
 
 export async function loginAsTeam(page: Page, slug: (typeof TEAM_SLUGS)[number] = "alpha") {
-  await loginAs(page, teamEmail(slug));
+  await restoreSession(page, teamStoragePath(slug));
 }

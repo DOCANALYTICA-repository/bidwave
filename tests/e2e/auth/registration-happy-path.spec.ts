@@ -52,7 +52,7 @@ test("a fresh team can register, then log in to its dashboard", async ({ page })
   await page.getByLabel("Team name").fill(teamName);
   await page.getByLabel("Campus").click();
   await page.getByRole("option", { name: "Bangalore" }).click();
-  await page.getByRole("button", { name: "Next" }).click();
+  await page.getByRole("button", { name: "Next", exact: true }).click();
 
   // Step 2: members — the wizard starts with 3 empty rows already, fill
   // each by index (labels repeat once per row) and mark the first captain.
@@ -65,14 +65,14 @@ test("a fresh team can register, then log in to its dashboard", async ({ page })
     await page.getByLabel("CHRIST email").nth(i).fill(m.christEmail);
   }
   await page.getByRole("button", { name: "Set as captain" }).first().click();
-  await page.getByRole("button", { name: "Next" }).click();
+  await page.getByRole("button", { name: "Next", exact: true }).click();
 
   // Step 3: captain credentials — the shared team login is the captain's
   // CHRIST email from the previous step (read-only here).
   await expect(page.getByText(captainEmail)).toBeVisible();
   await page.getByLabel("Password").fill(captainPassword);
   await page.getByLabel("Confirm password").fill(captainPassword);
-  await page.getByRole("button", { name: "Next" }).click();
+  await page.getByRole("button", { name: "Next", exact: true }).click();
 
   // Step 4: invoice upload — a small dummy PDF, well under the 10MB cap
   // and matching the accepted "application/pdf" MIME type (REG-07).
@@ -83,7 +83,7 @@ test("a fresh team can register, then log in to its dashboard", async ({ page })
     buffer: dummyPdf,
   });
   await expect(page.getByText("invoice.pdf")).toBeVisible();
-  await page.getByRole("button", { name: "Next" }).click();
+  await page.getByRole("button", { name: "Next", exact: true }).click();
 
   // Step 5: review + submit.
   await expect(page.getByText(teamName)).toBeVisible();

@@ -34,7 +34,7 @@ test.describe("simulation happy path", () => {
 
     // Start is disabled once already started (config.started_at set) — only
     // click when it's still actionable, since Start has no "restart" affordance.
-    const startButton = page.getByRole("button", { name: "Start" });
+    const startButton = page.getByRole("button", { name: "Start", exact: true });
     await expect(startButton).toBeVisible();
     if (await startButton.isEnabled()) {
       await startButton.click();

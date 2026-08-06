@@ -70,6 +70,7 @@ test.describe("quiz happy path", () => {
 
     const href = await row.getByRole("link", { name: ROUND_NAME }).getAttribute("href");
     const roundId = href!.split("/admin/rounds/")[1];
+    await adminPage.goto(href!);
 
     await adminPage.getByRole("tab", { name: "Quiz bank" }).click();
     await addQuestionIfMissing(adminPage, QUESTION_PROMPT_1, [

@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { FileDrop } from "@/components/bidwave";
 import { Button } from "@/components/ui/button";
@@ -12,12 +12,10 @@ export function SubmissionForm({ roundId, disabled }: { roundId: string; disable
   const [files, setFiles] = useState<File[]>([]);
   const [state, formAction, isPending] = useActionState(submitRoundFiles, initialState);
 
-  const [lastHandledState, setLastHandledState] = useState(state);
-  if (state !== lastHandledState) {
-    setLastHandledState(state);
+  useEffect(() => {
     if (state.status === "success") toast.success("Submission received.");
     if (state.status === "error" && state.formError) toast.error(state.formError);
-  }
+  }, [state]);
 
   return (
     <form

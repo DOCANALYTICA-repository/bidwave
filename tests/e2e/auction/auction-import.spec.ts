@@ -13,6 +13,11 @@ test.describe("auction player import", () => {
   test("imports a valid row and reports an error for an invalid row", async ({ page }) => {
     await loginAsAdmin(page);
     await page.goto("/admin/auction/players");
+    // FileDrop's file input needs React hydration attached before a native
+    // change event (as setInputFiles dispatches) will reach its onChange —
+    // an event fired earlier is lost, not queued, leaving the Import button
+    // permanently disabled. Confirmed by direct reproduction.
+    await page.waitForLoadState("networkidle");
 
     const validName = `E2E Import Player ${Date.now()}`;
     // Row 2 (valid): all required fields present.

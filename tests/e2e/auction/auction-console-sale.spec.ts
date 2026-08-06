@@ -78,10 +78,10 @@ test.describe("auction console — record sale", () => {
 
     // record_sale() raises '[sale_blocked] % rule(s) violated.' — the code
     // prefix is stripped by parseRpcErrorCode, leaving this exact text.
-    await expect(page.getByText(/rule\(s\) violated/)).toBeVisible();
+    await expect(page.getByText(/rule\(s\) violated/).first()).toBeVisible();
     // The specific violation, from the exception's DETAIL, humanized by
     // console-sale-entry.tsx's humanizeViolation().
-    await expect(page.getByText(/insufficient_purse/)).toBeVisible();
+    await expect(page.getByText(/insufficient_purse/).first()).toBeVisible();
 
     // Confirm no partial write happened — the player must still be active,
     // not sold, and the sales log must not show it.

@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { loginAsAdmin } from "../fixtures";
+import { loginAsAdmin, teamName } from "../fixtures";
 
 /**
  * R6-04/R6-05: the final Top 10 is an explicit, admin-assembled, ordered
@@ -21,20 +21,19 @@ test.describe("final results publish", () => {
       page.getByText("Publish a new ranked list (10 entries, admin-ordered)"),
     ).toBeVisible();
 
-    // Deliberately rank Lima above Alpha — an order no alphabetical or
-    // reference-sum formula would ever produce, proving this is a manual
-    // admin choice, not a computed one.
-    const rank1Select = page.locator("[data-slot=select-trigger]").nth(0);
-    await rank1Select.click();
-    await page.getByRole("option", { name: /Franchise Lima/ }).click();
-    const rank1Score = page.getByPlaceholder("Score").nth(0);
-    await rank1Score.fill("99");
-
-    const rank2Select = page.locator("[data-slot=select-trigger]").nth(1);
-    await rank2Select.click();
-    await page.getByRole("option", { name: /Franchise Alpha/ }).click();
-    const rank2Score = page.getByPlaceholder("Score").nth(1);
-    await rank2Score.fill("95");
+    // admin_publish_leaderboard() rejects a final_top_10 snapshot unless it
+    // has exactly 10 entries ("[invalid_final_top_10] ... must have exactly
+    // 10 entries") — confirmed by direct reproduction. Fill all 10 slots.
+    // Ranks 1-2 deliberately rank Lima above Alpha — an order no
+    // alphabetical or reference-sum formula would ever produce, proving
+    // this is a manual admin choice, not a computed one.
+    const rankedTeams = ["lima", "alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel", "india"] as const;
+    for (let i = 0; i < rankedTeams.length; i++) {
+      const select = page.locator("[data-slot=select-trigger]").nth(i);
+      await select.click();
+      await page.getByRole("option", { name: new RegExp(teamName(rankedTeams[i])) }).click();
+      await page.getByPlaceholder("Score").nth(i).fill(String(100 - i * 3));
+    }
 
     await page.getByRole("button", { name: "Publish" }).click();
     await expect(page.getByText("Leaderboard published.")).toBeVisible();
@@ -43,8 +42,8 @@ test.describe("final results publish", () => {
     await expect(page.getByText(/Published/)).toBeVisible();
     const publishedList = page.locator("ol");
     await expect(publishedList.locator("li").nth(0)).toContainText("Franchise Lima");
-    await expect(publishedList.locator("li").nth(0)).toContainText("99");
+    await expect(publishedList.locator("li").nth(0)).toContainText("100");
     await expect(publishedList.locator("li").nth(1)).toContainText("Franchise Alpha");
-    await expect(publishedList.locator("li").nth(1)).toContainText("95");
+    await expect(publishedList.locator("li").nth(1)).toContainText("97");
   });
 });

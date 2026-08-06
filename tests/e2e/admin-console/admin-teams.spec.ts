@@ -29,7 +29,7 @@ test.describe("admin teams directory", () => {
     await expect(page.getByRole("heading", { name: "Teams" }).first()).toBeVisible();
 
     await expect(page.getByRole("button", { name: "Previous" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Next" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Next", exact: true })).toHaveCount(0);
   });
 
   test("clicking a team opens its detail sheet with roster and invoice tab", async ({ page }) => {

@@ -15,7 +15,7 @@ test("admin publishes an announcement, sees a toast, and it appears in the list;
 
   await loginAsAdmin(page);
   await page.goto("/admin/announcements");
-  await expect(page.getByRole("heading", { name: "Announcements" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Announcements", exact: true })).toBeVisible();
 
   await page.getByPlaceholder("Round 3 has been rescheduled to 3:30pm.").fill(message);
   await page.getByRole("button", { name: "Publish now" }).click();

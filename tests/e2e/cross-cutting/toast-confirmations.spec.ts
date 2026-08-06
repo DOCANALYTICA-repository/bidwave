@@ -18,7 +18,7 @@ test.describe("toast confirmations", () => {
     await page.getByRole("button", { name: "Publish now" }).click();
 
     await expect(
-      page.locator("[data-sonner-toast]").filter({ hasText: "Announcement saved." }),
+      page.locator("[data-sonner-toast]").filter({ hasText: "Announcement saved." }).first(),
     ).toBeVisible();
 
     // The new row now exists, published — toggling it exercises the second
@@ -28,7 +28,7 @@ test.describe("toast confirmations", () => {
     await row.getByRole("button", { name: "Unpublish" }).click();
 
     await expect(
-      page.locator("[data-sonner-toast]").filter({ hasText: "Announcement unpublished." }),
+      page.locator("[data-sonner-toast]").filter({ hasText: "Announcement unpublished." }).first(),
     ).toBeVisible();
   });
 

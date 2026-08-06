@@ -30,6 +30,7 @@ test.describe("quiz second device", () => {
     await expect(row.getByRole("cell").nth(3)).toContainText(/open/i);
     const href = await row.getByRole("link", { name: ROUND_NAME }).getAttribute("href");
     const roundId = href!.split("/admin/rounds/")[1];
+    await adminPage.goto(href!);
 
     await adminPage.getByRole("tab", { name: "Quiz bank" }).click();
     if ((await adminPage.getByText(/^#0 /).count()) === 0) {

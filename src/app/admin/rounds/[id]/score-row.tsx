@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -38,12 +38,10 @@ export function ScoreRow({
   const [validationError, setValidationError] = useState<string | null>(null);
   const [state, formAction, isPending] = useActionState(adminSaveScore, roundActionInitialState);
 
-  const [lastHandledState, setLastHandledState] = useState(state);
-  if (state !== lastHandledState) {
-    setLastHandledState(state);
+  useEffect(() => {
     if (state.status === "success") toast.success(`Score saved for ${teamName}.`);
     if (state.status === "error" && state.formError) toast.error(state.formError);
-  }
+  }, [state, teamName]);
 
   const hasCriteria = criteria.length > 0;
 

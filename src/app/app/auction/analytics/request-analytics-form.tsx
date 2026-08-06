@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Money } from "@/components/bidwave";
@@ -12,12 +12,10 @@ export function RequestAnalyticsForm({ price, balance }: { price: number; balanc
   const [state, formAction, isPending] = useActionState(requestAnalytics, initialState);
   const insufficientFunds = balance < price;
 
-  const [lastHandledState, setLastHandledState] = useState(state);
-  if (state !== lastHandledState) {
-    setLastHandledState(state);
+  useEffect(() => {
     if (state.status === "success") toast.success("Analytics requested.");
     if (state.status === "error" && state.formError) toast.error(state.formError);
-  }
+  }, [state]);
 
   return (
     <form action={formAction} className="space-y-3">

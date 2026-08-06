@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect } from "react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,12 +12,10 @@ const roundActionInitialState: RoundActionState = { status: "idle" };
 export function CriterionForm({ roundId, position }: { roundId: string; position: number }) {
   const [state, formAction, isPending] = useActionState(adminSaveRubricCriterion, roundActionInitialState);
 
-  const [lastHandledState, setLastHandledState] = useState(state);
-  if (state !== lastHandledState) {
-    setLastHandledState(state);
+  useEffect(() => {
     if (state.status === "success") toast.success("Criterion added.");
     if (state.status === "error" && state.formError) toast.error(state.formError);
-  }
+  }, [state]);
 
   return (
     <form action={formAction} className="flex flex-wrap items-end gap-3 rounded-xl border border-border bg-card p-4">

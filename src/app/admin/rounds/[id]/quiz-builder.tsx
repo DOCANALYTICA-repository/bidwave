@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -95,15 +95,19 @@ export function QuizBuilder({
     setOptions(BLANK_OPTIONS);
   }
 
-  const [lastHandledState, setLastHandledState] = useState(state);
-  if (state !== lastHandledState) {
-    setLastHandledState(state);
+  useEffect(() => {
     if (state.status === "success") {
       toast.success(editingId ? "Question updated." : "Question added.");
+      // Resetting the form back to its blank/add state after a successful
+      // save is exactly what this effect exists to do — it's the "clear
+      // local UI state after synchronizing with an external result" case,
+      // not a derived-state anti-pattern.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       cancelEdit();
     }
     if (state.status === "error" && state.formError) toast.error(state.formError);
-  }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]);
 
   return (
     <div className="space-y-6">

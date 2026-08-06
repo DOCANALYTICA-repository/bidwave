@@ -34,6 +34,7 @@ test.describe("quiz exit detection", () => {
     await expect(row.getByRole("cell").nth(3)).toContainText(/open/i);
     const href = await row.getByRole("link", { name: ROUND_NAME }).getAttribute("href");
     const roundId = href!.split("/admin/rounds/")[1];
+    await adminPage.goto(href!);
 
     // A round with no active question can't be started — make sure at
     // least one exists, reusing whatever quiz-happy-path.spec.ts /
