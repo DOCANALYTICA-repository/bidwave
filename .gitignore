@@ -39,3 +39,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# supabase local dev
+/supabase/.branches
+/supabase/.temp
+
+# reference material (PRD, brochure, raw logo originals) — archived locally,
+# not versioned: large binaries, not application source.
+/reference/

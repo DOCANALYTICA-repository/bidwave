@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Standalone Node tooling (not part of the Next.js app bundle) —
+    // plain CommonJS by necessity (package.json has no "type": "module"),
+    // same idiom as the throwaway migration-apply scripts.
+    "scripts/**",
   ]),
 ]);
 
