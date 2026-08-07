@@ -258,3 +258,163 @@ describe("Audit P0 #4: assert_admin rejects non-admins", () => {
     });
   });
 });
+
+// 20260807090000 — 20260802020000_admin_broadcast_topics.sql dropped the
+// trailing p_admin_id param on five admin RPCs while doing `create or
+// replace`, which (since Postgres resolves overloads by full signature)
+// silently minted brand-new SECURITY DEFINER functions with Postgres's
+// default PUBLIC EXECUTE grant and no assert_admin() call — anon and
+// authenticated could call them directly. These two checks catch both the
+// symptom (an exposed SECURITY DEFINER function) and the root cause (an
+// accidental overload from a signature change), so this class of defect
+// cannot ship silently again.
+describe("SECURITY DEFINER functions are service_role-only", () => {
+  // simulation_status(uuid) is a deliberate authenticated-only grant
+  // (revoked from public/anon, granted to authenticated — 20260730060000)
+  // so teams can poll simulation status while it's running.
+  const ALLOWED = ["can_team_submit(uuid,uuid)", "simulation_status(uuid)"];
+
+  it("no public.* SECURITY DEFINER function is executable by anon or authenticated, beyond the allowlist", async () => {
+    await withTx(async (client) => {
+      const { rows } = await client.query<{ signature: string }>(`
+        select p.oid::regprocedure::text as signature
+        from pg_catalog.pg_proc p
+        join pg_catalog.pg_namespace n on n.oid = p.pronamespace
+        where n.nspname = 'public'
+          and p.prosecdef
+          -- trigger/event_trigger functions have no callable SQL entry point
+          -- (an event trigger, e.g. Supabase's platform-managed
+          -- rls_auto_enable(), can only run inside the event-trigger
+          -- machinery — attempting a direct SELECT of one is rejected by
+          -- Postgres itself) so PUBLIC EXECUTE on them is not a real hole.
+          and p.prorettype not in ('pg_catalog.trigger'::regtype, 'pg_catalog.event_trigger'::regtype)
+          and (
+            has_function_privilege('anon', p.oid, 'execute')
+            or has_function_privilege('authenticated', p.oid, 'execute')
+          )
+        order by 1;
+      `);
+      expect(rows.map((r) => r.signature)).toEqual(ALLOWED);
+    });
+  });
+
+  it("no admin_* function has more than one overload (the exact defect that caused the P0 above)", async () => {
+    await withTx(async (client) => {
+      const { rows } = await client.query<{ proname: string; overloads: number; signatures: string }>(`
+        select p.proname, count(*)::int as overloads,
+               string_agg(p.oid::regprocedure::text, ' | ' order by p.oid::regprocedure::text) as signatures
+        from pg_catalog.pg_proc p
+        join pg_catalog.pg_namespace n on n.oid = p.pronamespace
+        where n.nspname = 'public' and p.proname like 'admin\\_%'
+        group by p.proname
+        having count(*) > 1;
+      `);
+      expect(rows).toEqual([]);
+    });
+  });
+});
+
+// 20260807090000 — restores the live-broadcast calls that 20260802020000
+// added to the wrong (unreachable) overload, and the [attempt_not_a_win]
+// guard that same migration silently dropped from
+// admin_confirm_simulation_reward.
+describe("20260807090000: admin RPC broadcasts and guards restored", () => {
+  it("admin_publish_leaderboard writes a live_broadcast row and stamps published_by, not null", async () => {
+    await withTx(async (client) => {
+      const eventEditionId = await getActiveEventEditionId(client);
+      const adminId = await createTestAdmin(client);
+
+      const { rows } = await client.query(
+        `select public.admin_publish_leaderboard($1, 'top_15', '[]'::jsonb, 15, $2) as snapshot_id`,
+        [eventEditionId, adminId],
+      );
+      const snapshotId = rows[0].snapshot_id;
+
+      const { rows: snapshotRows } = await client.query(
+        "select published_by from public.leaderboard_snapshots where id = $1",
+        [snapshotId],
+      );
+      expect(snapshotRows[0].published_by).toBe(adminId);
+
+      const { rows: broadcastRows } = await client.query(
+        `select 1 from public.live_broadcast
+         where event_edition_id = $1 and topic = 'leaderboard' and kind = 'published'
+           and payload ->> 'snapshot_id' = $2
+         order by created_at desc limit 1`,
+        [eventEditionId, snapshotId],
+      );
+      expect(broadcastRows).toHaveLength(1);
+    });
+  });
+
+  it("admin_confirm_simulation_reward still rejects a non-winning attempt", async () => {
+    await withTx(async (client) => {
+      const eventEditionId = await getActiveEventEditionId(client);
+      const adminId = await createTestAdmin(client);
+      const teamId = await createTestTeam(client, { name: "Non-Winner Team", eventEditionId });
+
+      const { rows: configRows } = await client.query(
+        `insert into public.simulation_config
+           (event_edition_id, parameters, scoring, answer_key, global_timer_seconds, submit_cooldown_seconds, defaults_overall)
+         values ($1, '{}'::jsonb, '{}'::jsonb, '{}'::jsonb, 1500, 3, 70)
+         returning id`,
+        [eventEditionId],
+      );
+      const configId = configRows[0].id;
+
+      const { rows: attemptRows } = await client.query(
+        `insert into public.simulation_attempts
+           (config_id, team_id, submitted_parameters, sub_scores, overall, success)
+         values ($1, $2, '{}'::jsonb, '{}'::jsonb, 40, false)
+         returning id`,
+        [configId, teamId],
+      );
+      const attemptId = attemptRows[0].id;
+
+      const rejection = await expectRejection(
+        client,
+        "select public.admin_confirm_simulation_reward($1, $2, $3, 'purse', 100, null, 'test', $4)",
+        [configId, teamId, attemptId, adminId],
+      );
+      expect(rejection.message).toMatch(/attempt_not_a_win/);
+    });
+  });
+});
+
+// 20260807090000 — admin_upsert_quiz_question's previous fix
+// (20260806120000) used `select max(position)+1 ... for update`, which
+// Postgres rejects at runtime ("FOR UPDATE is not allowed with aggregate
+// functions"). Every insert was broken on the hosted DB until this fix.
+describe("20260807090000: quiz question position no longer breaks on insert", () => {
+  it("two consecutive inserts on the same round land at consecutive positions", async () => {
+    await withTx(async (client) => {
+      const eventEditionId = await getActiveEventEditionId(client);
+      const { rows: roundRows } = await client.query(
+        `insert into public.rounds (event_edition_id, kind, sequence, slug, title)
+         values ($1, 'quiz', 98, 'quiz-position-test', 'Quiz Position Test')
+         returning id`,
+        [eventEditionId],
+      );
+      const roundId = roundRows[0].id;
+      const options = JSON.stringify([
+        { position: 0, label: "A", is_correct: true },
+        { position: 1, label: "B", is_correct: false },
+      ]);
+
+      const { rows: first } = await client.query(
+        `select public.admin_upsert_quiz_question(null, $1, null, 'Q1', 20, 1, true, $2::jsonb) as id`,
+        [roundId, options],
+      );
+      const { rows: second } = await client.query(
+        `select public.admin_upsert_quiz_question(null, $1, null, 'Q2', 20, 1, true, $2::jsonb) as id`,
+        [roundId, options],
+      );
+
+      const { rows: positions } = await client.query(
+        "select id, position from public.quiz_questions where id in ($1, $2) order by position",
+        [first[0].id, second[0].id],
+      );
+      expect(positions.map((r) => r.position)).toEqual([0, 1]);
+    });
+  });
+});

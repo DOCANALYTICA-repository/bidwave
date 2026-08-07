@@ -15,6 +15,10 @@ export async function withTx<T>(fn: (client: Client) => Promise<T>): Promise<T> 
   const client = new Client({
     connectionString: process.env.SUPABASE_DB_URL,
     ssl: { rejectUnauthorized: false },
+    // Without this, an unreachable pooler makes every one of the ~50 serial
+    // tests (fileParallelism is off) block for the full 20s testTimeout —
+    // that's what "the suite hung for 5+ minutes" actually was.
+    connectionTimeoutMillis: 10_000,
   });
   await client.connect();
   try {
