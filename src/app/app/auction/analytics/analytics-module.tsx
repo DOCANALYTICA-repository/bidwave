@@ -124,6 +124,15 @@ export function AnalyticsModule({
         </div>
       </Section>
 
+      <Section title="Recommendations">
+        <Recommendations
+          roleCounts={roleCounts}
+          poolCounts={poolCounts}
+          ruleSet={ruleSet}
+          affordablePlayers={availablePlayers.filter((p) => p.base_price <= balance)}
+        />
+      </Section>
+
       <Section title="Purse-aware affordable targets">
         {affordable.length === 0 ? (
           <EmptyState
@@ -195,6 +204,71 @@ function Section({ title, children }: { title: string; children: React.ReactNode
       <h2 className="font-heading text-xs font-semibold uppercase tracking-widest text-analytics">{title}</h2>
       {children}
     </section>
+  );
+}
+
+/**
+ * Phase 5: gap-aware "fill this gap" recommendations — for each role/pool
+ * still below ruleSet's minimum (role_limits/pool_limits carry a `max`,
+ * not a `min`, so a squad-size gap against min_squad_size is the only
+ * general-purpose signal available without per-role minimums the schema
+ * doesn't have), rank affordable available players by role/pool match and
+ * surface the purse cost of taking each. Degrades to an EmptyState rather
+ * than fabricating urgency when there's no real gap or nothing affordable
+ * — same principle as the undervalued-opportunities section above.
+ */
+function Recommendations({
+  roleCounts,
+  poolCounts,
+  ruleSet,
+  affordablePlayers,
+}: {
+  roleCounts: Record<string, number>;
+  poolCounts: Record<string, number>;
+  ruleSet: RuleSet | null;
+  affordablePlayers: Player[];
+}) {
+  const squadGap = ruleSet ? Math.max(0, ruleSet.min_squad_size - Object.values(roleCounts).reduce((a, b) => a + b, 0)) : 0;
+
+  if (!ruleSet || squadGap === 0 || affordablePlayers.length === 0) {
+    return (
+      <EmptyState
+        title="No open gaps to fill"
+        description="Recommendations appear once your squad is below the minimum size and there are affordable players available."
+      />
+    );
+  }
+
+  // Roles you have the fewest of are the most likely gap — a heuristic in
+  // the absence of per-role minimums, not a claim about what the ruleset
+  // actually requires.
+  const rolesByScarcity = Object.entries(roleCounts).sort((a, b) => a[1] - b[1]).map(([role]) => role);
+  const scarcityRank = new Map(rolesByScarcity.map((role, i) => [role, i]));
+
+  const ranked = [...affordablePlayers]
+    .sort((a, b) => (scarcityRank.get(a.role) ?? 99) - (scarcityRank.get(b.role) ?? 99) || a.base_price - b.base_price)
+    .slice(0, 6);
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-ink-2">
+        Your squad is {squadGap} player{squadGap === 1 ? "" : "s"} below the minimum. Ranked by role scarcity in your
+        current roster, then by affordability.
+      </p>
+      <ul className="space-y-1.5">
+        {ranked.map((p) => (
+          <li key={p.id} className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-sm">
+            <span>
+              {p.full_name}{" "}
+              <span className="text-xs text-ink-3">
+                ({p.role} · Pool {p.pool} · {roleCounts[p.role] ?? 0} on roster, {poolCounts[p.pool] ?? 0} in pool)
+              </span>
+            </span>
+            <Money value={p.base_price} className="text-xs" />
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 

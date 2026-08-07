@@ -50,7 +50,7 @@ function stepIndexForField(field: string): number {
 // literal has to live on the client side instead of alongside the action.
 const registerInitialState: RegisterActionState = { status: "idle" };
 
-export function RegisterWizard() {
+export function RegisterWizard({ paymentInstructions }: { paymentInstructions?: string | null }) {
   const [step, setStep] = useState(0);
   const [values, setValues] = useState<WizardValues>(initialWizardValues);
   const [errors, setErrors] = useState<Record<string, string[]>>({});
@@ -216,7 +216,9 @@ export function RegisterWizard() {
         {step === 2 && (
           <CaptainCredentialsStep values={values} errors={errors} onChange={patchValues} />
         )}
-        {step === 3 && <InvoiceStep values={values} errors={errors} onChange={patchValues} />}
+        {step === 3 && (
+          <InvoiceStep values={values} errors={errors} onChange={patchValues} paymentInstructions={paymentInstructions} />
+        )}
         {step === 4 && (
           <ReviewStep
             values={values}

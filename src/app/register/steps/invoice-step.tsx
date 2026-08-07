@@ -8,10 +8,12 @@ export function InvoiceStep({
   values,
   errors,
   onChange,
+  paymentInstructions,
 }: {
   values: WizardValues;
   errors: Record<string, string[]>;
   onChange: (patch: Partial<WizardValues>) => void;
+  paymentInstructions?: string | null;
 }) {
   return (
     <div className="space-y-4">
@@ -20,6 +22,11 @@ export function InvoiceStep({
         <p className="text-xs text-ink-3">
           Upload your invoice or payment screenshot as a PDF, JPG or PNG.
         </p>
+        {paymentInstructions && (
+          <p className="mt-2 whitespace-pre-line rounded-lg border border-border bg-surface-1 p-3 text-xs text-ink-2">
+            {paymentInstructions}
+          </p>
+        )}
       </div>
       <FileDrop
         value={values.invoiceFile ? [values.invoiceFile] : []}
