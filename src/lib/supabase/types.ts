@@ -14,7 +14,15 @@
  * 20260730040000_rounds_scoring_leaderboards.sql, 20260730050000_quiz_engine.sql,
  * 20260730060000_simulation.sql, 20260730070000_seed_six_rounds.sql,
  * 20260730080000_auction.sql, 20260730081000_record_locks_nullable_locked_by.sql,
- * 20260731090000_analytics_requests.sql, 20260731100000_import_error_persistence.sql
+ * 20260731090000_analytics_requests.sql, 20260731100000_import_error_persistence.sql,
+ * 20260801090000_players_privacy.sql, 20260801093000_auction_integrity_and_qualification.sql,
+ * 20260801100000_admin_identity_threading.sql, 20260801130000_seed_stages_and_simulation_config.sql,
+ * 20260801133000_data_integrity_constraints.sql, 20260801140000_round_and_submission_workflow_fixes.sql,
+ * 20260801143000_round_materials_storage.sql, 20260802000000_admin_reversal_and_simulation_visibility.sql,
+ * 20260802010000_fix_simulation_config_placeholder_shape.sql, 20260802020000_admin_broadcast_topics.sql,
+ * 20260806120000_fix_quiz_question_position_race.sql,
+ * 20260807090000_fix_admin_overloads_and_quiz_position_lock.sql,
+ * 20260807100000_simulation_spec_conformance.sql
  */
 export type Json =
   | string
@@ -2387,6 +2395,26 @@ export type Database = {
           p_reason: string | null;
           p_admin_id: string;
         };
+        Returns: string;
+      };
+      admin_regenerate_simulation_answer_keys: {
+        Args: { p_config_id: string; p_admin_id: string; p_reason: string };
+        Returns: undefined;
+      };
+      simulation_generate_answer_key: {
+        Args: { p_parameters: Json };
+        Returns: Json;
+      };
+      simulation_default_parameters: {
+        Args: Record<PropertyKey, never>;
+        Returns: Json;
+      };
+      simulation_default_scoring: {
+        Args: Record<PropertyKey, never>;
+        Returns: Json;
+      };
+      seed_simulation_config: {
+        Args: { p_event_edition_id: string };
         Returns: string;
       };
       admin_grant_starting_purses: {

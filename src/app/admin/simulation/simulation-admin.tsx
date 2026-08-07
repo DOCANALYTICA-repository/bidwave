@@ -23,6 +23,8 @@ import {
   adminConfirmSimulationReward,
   adminRestartSimulation,
   adminReverseSimulationReward,
+  adminRevealAnswerKey,
+  adminRegenerateAnswerKeys,
   type SimActionState,
 } from "@/app/admin/simulation/actions";
 
@@ -57,7 +59,6 @@ type Config = {
   updated_at: string;
   parameters: unknown;
   scoring: unknown;
-  answer_key: unknown;
   global_timer_seconds: number;
   submit_cooldown_seconds: number;
   started_at: string | null;
@@ -108,6 +109,7 @@ export function SimulationAdmin({
   const [lifecycleError, setLifecycleError] = useState<string | null>(null);
   const [rewardError, setRewardError] = useState<string | null>(null);
   const [restarting, setRestarting] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
   const [reversing, setReversing] = useState<Reward | null>(null);
 
   return (
@@ -169,6 +171,11 @@ export function SimulationAdmin({
               {config.stopped_at && (
                 <Button size="sm" variant="outline" onClick={() => setRestarting(true)}>
                   Restart…
+                </Button>
+              )}
+              {!config.started_at && (
+                <Button size="sm" variant="outline" onClick={() => setRegenerating(true)}>
+                  Regenerate keys…
                 </Button>
               )}
               <Button
@@ -233,16 +240,7 @@ export function SimulationAdmin({
             defaultValue={config ? JSON.stringify(config.scoring, null, 2) : ""}
           />
         </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="sim-answer-key">Answer key (the 4 correct combinations — service_role only)</Label>
-          <Textarea
-            id="sim-answer-key"
-            name="answerKey"
-            rows={6}
-            className="font-mono text-xs"
-            defaultValue={config ? JSON.stringify(config.answer_key, null, 2) : ""}
-          />
-        </div>
+        <AnswerKeyField configId={config?.id ?? null} />
 
         {state.status === "error" && state.formError && <p className="text-sm text-unsold">{state.formError}</p>}
         {state.status === "success" && <p className="text-sm text-sold">Saved — calibration passed (all-defaults = 70).</p>}
@@ -380,12 +378,137 @@ export function SimulationAdmin({
           onOpenChange={setRestarting}
         />
       )}
+      {config && (
+        <RegenerateKeysDialog
+          configId={config.id}
+          open={regenerating}
+          onOpenChange={setRegenerating}
+        />
+      )}
       <ReverseRewardDialog
         configId={config?.id ?? ""}
         reward={reversing}
         onOpenChange={(open) => !open && setReversing(null)}
       />
     </div>
+  );
+}
+
+// getSimulationData() never ships answer_key to the browser (it's
+// generated at seed time and lives only in the DB — plan spec, see
+// 20260807100000_simulation_spec_conformance.sql). This starts collapsed;
+// "Reveal" fetches it on demand, and the hidden field falls back to the
+// config's current key server-side when left untouched (adminSaveSimulation
+// Config in actions.ts) so a routine save (e.g. tweaking the timer) can't
+// silently wipe it.
+function AnswerKeyField({ configId }: { configId: string | null }) {
+  const [revealed, setRevealed] = useState<string | null>(null);
+  const [revealing, setRevealing] = useState(false);
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between">
+        <Label htmlFor="sim-answer-key">Answer key (the 4 correct combinations — service_role only)</Label>
+        {configId && revealed === null && (
+          <Button
+            type="button"
+            size="sm"
+            variant="tile"
+            disabled={revealing}
+            onClick={async () => {
+              setRevealing(true);
+              const { answerKey, error } = await adminRevealAnswerKey(configId);
+              setRevealing(false);
+              if (error) {
+                toast.error(error);
+                return;
+              }
+              setRevealed(JSON.stringify(answerKey, null, 2));
+            }}
+          >
+            {revealing ? "Revealing…" : "Reveal answer key"}
+          </Button>
+        )}
+      </div>
+      <Textarea
+        id="sim-answer-key"
+        name="answerKey"
+        rows={6}
+        className="font-mono text-xs"
+        placeholder={configId ? "Hidden — click \"Reveal answer key\" to view or edit. Leave blank to keep it unchanged." : ""}
+        defaultValue={revealed ?? ""}
+        key={revealed ?? "hidden"}
+      />
+    </div>
+  );
+}
+
+// Regenerating mid-round would invalidate any already-confirmed winner's
+// actual submitted combination — the RPC itself refuses once started_at is
+// set (20260807100000), this dialog only appears before that point.
+function RegenerateKeysDialog({
+  configId,
+  open,
+  onOpenChange,
+}: {
+  configId: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [reason, setReason] = useState("");
+  const [isPending, setIsPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Regenerate answer keys</DialogTitle>
+          <DialogDescription>
+            Generates 4 new championship formulas and replaces the current answer key. Only available before the
+            simulation starts.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="regen-reason">Reason (required)</Label>
+          <Textarea
+            id="regen-reason"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            rows={2}
+            placeholder="e.g. suspected leak during rehearsal"
+          />
+        </div>
+
+        {error && <p className="text-sm text-unsold">{error}</p>}
+
+        <DialogFooter>
+          <Button
+            variant="destructive"
+            disabled={reason.trim().length === 0 || isPending}
+            onClick={async () => {
+              setIsPending(true);
+              setError(null);
+              const { error } = await adminRegenerateAnswerKeys(configId, reason.trim());
+              setIsPending(false);
+              if (error) {
+                setError(error);
+                toast.error(error);
+                return;
+              }
+              toast.success("Answer keys regenerated.");
+              queryClient.invalidateQueries({ queryKey: ["admin", "simulation"] });
+              setReason("");
+              onOpenChange(false);
+            }}
+          >
+            {isPending ? "Regenerating…" : "Confirm regeneration"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

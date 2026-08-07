@@ -45,127 +45,20 @@ async function main() {
   const eventEditionId = edition.id;
 
   // Independent of the team-seeding early-return below: `unseed:demo`
-  // unconditionally deletes every simulation_config row for the active
-  // edition (it must, to cascade away test attempts/rewards), but nothing
-  // used to recreate one afterward — the only INSERT was a one-time
-  // migration guarded by `not exists`, so it could never re-fire. That left
-  // /admin/simulation with empty fields and no "Show to teams" button, and
-  // /app/simulation 404ing for teams, on every seed:demo run after the
-  // first unseed:demo.
-  //
-  // This step also fixes a second, deeper bug found while restoring it: the
-  // original migration's placeholder JSON (supabase/migrations/
-  // 20260801130000_seed_stages_and_simulation_config.sql) was written
-  // directly into the table via a raw INSERT, bypassing
-  // admin_save_simulation_config() entirely — so it was never actually
-  // validated against what that RPC (and simulation_evaluate()) require.
-  // Two shape mismatches as a result: (1) `parameters.categorical`/`sliders`
-  // were plain objects, but simulation-console.tsx's frontend type expects
-  // arrays of `{key, label, default, options}` / `{key, label, min, max,
-  // step, default}` — confirmed live: visiting /app/simulation as a team
-  // threw "parameters.categorical.map is not a function" the moment a
-  // config existed. (2) `scoring`/`answer_key` used field names
-  // (categorical_weight, slider_weight, etc.) that simulation_evaluate()
-  // never reads at all — it needs `sub_scores` (array of {key, inputs,
-  // overall_weight}), `partial`, and answer_key.keys[] needing an `index`
-  // plus nested `categorical`/`sliders` objects. Both bugs were latent even
-  // during the "High confidence" TESTING_GUIDE #7 verification, which only
-  // exercised the visible_at toggle directly against the DB, never a real
-  // team submission.
-  //
-  // Fixed by building parameters/scoring/answer_key in the shape both
-  // sides actually require, then inserting via admin_save_simulation_config
-  // itself (not a raw INSERT) — the same calibration check production goes
-  // through, so "defaults_overall = 70" is verified at seed time, not
-  // hand-asserted. Calibrates deterministically: every categorical
-  // parameter's `default` is options[0], and every answer key only ever
-  // uses options[1..3] for that parameter, so the all-defaults probe never
-  // matches any key on any categorical input; every slider's `default`
-  // (50) sits far outside every key's tolerance+falloff band around its
-  // target (95, tolerance 5, falloff 30) so slider credit is 0 too. That
-  // makes every sub-score bottom out at `sub_floor` (20) for every one of
-  // the 4 keys, so `overall_offset: 50` (with `overall_gain: 1`) lands
-  // exactly on 70 by construction — see scripts/README or git history for
-  // the derivation if this ever needs re-tuning.
+  // unconditionally deletes every simulation_config row for the target
+  // edition (it must, to cascade away test attempts/rewards), so it needs
+  // recreating on every seed:demo run. The parameters/scoring shape and
+  // the answer-key generation both live in the database now
+  // (public.seed_simulation_config, 20260807100000) — the plan forbids
+  // committing the actual answer key anywhere in the repo, so this script
+  // no longer builds or contains one at all.
   const { rows: simConfigRows } = await pg.query(
     "select id from public.simulation_config where event_edition_id = $1",
     [eventEditionId],
   );
   if (!simConfigRows[0]) {
-    console.log("Restoring simulation_config placeholder...");
-
-    const titleCase = (s) => s.split("_").map((w) => w[0].toUpperCase() + w.slice(1)).join(" ");
-
-    const CATEGORICALS = {
-      pitch_type: ["green", "dry", "flat", "dusty"],
-      toss_call: ["bat", "bowl", "spin_first", "pace_first"],
-      field_setting: ["attacking", "balanced", "defensive", "spread"],
-      batting_order: ["top_heavy", "balanced", "floaters", "power_hitters_early"],
-      bowling_plan: ["pace_heavy", "spin_heavy", "mixed", "death_specialists"],
-      powerplay_approach: ["aggressive", "conservative", "wicket_preservation", "boundary_hunting"],
-      middle_overs_plan: ["rotate_strike", "build_partnership", "attack_spin", "consolidate"],
-      death_overs_plan: ["yorkers", "slower_balls", "bouncers", "wide_yorkers"],
-    };
-    const SLIDERS = ["aggression", "risk_tolerance", "boundary_focus", "rotation_focus"];
-
-    const parameters = {
-      categorical: Object.entries(CATEGORICALS).map(([key, options]) => ({
-        key,
-        label: titleCase(key),
-        default: options[0],
-        options: options.map((o) => ({ key: o, label: titleCase(o) })),
-      })),
-      sliders: SLIDERS.map((key) => ({
-        key, label: titleCase(key), min: 0, max: 100, step: 1, default: 50,
-      })),
-    };
-
-    // 4 answer keys ("championship formulas", SIM-05), cycling through
-    // options[1..3] per categorical so the default (options[0]) never
-    // matches any key — see the calibration comment above.
-    const keyCategoricalPicks = [1, 2, 3, 1];
-    const answerKey = {
-      keys: keyCategoricalPicks.map((pick, i) => ({
-        index: i,
-        categorical: Object.fromEntries(
-          Object.entries(CATEGORICALS).map(([key, options]) => [key, options[pick]]),
-        ),
-        sliders: Object.fromEntries(SLIDERS.map((key) => [key, { target: 95, tolerance: 5 }])),
-      })),
-    };
-
-    // Maps each of the frontend's 6 fixed sub-score tiles (batting, bowling,
-    // leadership, fielding, bench, chemistry — src/app/app/simulation/
-    // simulation-console.tsx's SUB_SCORE_LABELS) to 2 of the 12 parameters.
-    const SUB_SCORE_MAP = {
-      batting: ["pitch_type", "batting_order"],
-      bowling: ["bowling_plan", "death_overs_plan"],
-      leadership: ["toss_call", "powerplay_approach"],
-      fielding: ["field_setting", "middle_overs_plan"],
-      bench: ["aggression", "boundary_focus"],
-      chemistry: ["risk_tolerance", "rotation_focus"],
-    };
-
-    const scoring = {
-      sub_floor: 20,
-      sub_ceiling: 100,
-      overall_offset: 50,
-      overall_gain: 1,
-      sub_score_rounding: 1,
-      slider_tolerance: 10,
-      slider_falloff: 30,
-      partial: {},
-      sub_scores: Object.entries(SUB_SCORE_MAP).map(([key, params]) => ({
-        key,
-        overall_weight: 1,
-        inputs: params.map((p) => ({ param: p, weight: 1 })),
-      })),
-    };
-
-    await pg.query(
-      `select public.admin_save_simulation_config($1, null, $2, null, $3::jsonb, $4::jsonb, $5::jsonb, $6, $7)`,
-      [null, eventEditionId, JSON.stringify(parameters), JSON.stringify(scoring), JSON.stringify(answerKey), 1500, 3],
-    );
+    console.log("Seeding simulation_config (parameters + a freshly generated answer key)...");
+    await pg.query("select public.seed_simulation_config($1)", [eventEditionId]);
   }
 
   // Scoped to the target edition — unscoped, this falsely short-circuited

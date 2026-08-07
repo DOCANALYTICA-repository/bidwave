@@ -11,7 +11,9 @@ import { selectCurrentEdition } from "@/lib/event-edition";
 export type SimActionState = { status: "idle" | "error" | "success"; formError?: string };
 
 export type SimulationQueryResult = {
-  config: Database["public"]["Tables"]["simulation_config"]["Row"] | null;
+  // answer_key is deliberately never part of this shape — see the comment
+  // on the query in getSimulationData() below.
+  config: Omit<Database["public"]["Tables"]["simulation_config"]["Row"], "answer_key"> | null;
   attempts: {
     id: string;
     team_id: string;
@@ -41,9 +43,15 @@ export async function getSimulationData(eventEditionId: string): Promise<Simulat
   await requireAdmin();
   const supabase = await createClient();
 
+  // Explicit column list, omitting answer_key: the config is otherwise
+  // shipped straight into the admin browser (config below is threaded
+  // through simulation-admin.tsx's edit form), and the answer key should
+  // never sit in the DOM by default — see adminRevealAnswerKey().
   const { data: config } = await supabase
     .from("simulation_config")
-    .select("*")
+    .select(
+      "id, event_edition_id, round_id, parameters, scoring, global_timer_seconds, submit_cooldown_seconds, started_at, stopped_at, visible_at, winner_count, defaults_overall, created_at, updated_at",
+    )
     .eq("event_edition_id", eventEditionId)
     .order("created_at", { ascending: false })
     .limit(1)
@@ -103,13 +111,15 @@ export async function adminSaveSimulationConfig(
   const globalTimerSeconds = Number(formData.get("globalTimerSeconds") ?? 1500);
   const submitCooldownSeconds = Number(formData.get("submitCooldownSeconds") ?? 3);
 
+  const answerKeyRaw = String(formData.get("answerKey") ?? "").trim();
+
   let parameters: unknown;
   let scoring: unknown;
   let answerKey: unknown;
   try {
     parameters = JSON.parse(String(formData.get("parameters") ?? "{}"));
     scoring = JSON.parse(String(formData.get("scoring") ?? "{}"));
-    answerKey = JSON.parse(String(formData.get("answerKey") ?? "{}"));
+    answerKey = answerKeyRaw ? JSON.parse(answerKeyRaw) : undefined;
   } catch {
     return { status: "error", formError: "One of the JSON fields is invalid." };
   }
@@ -119,6 +129,21 @@ export async function adminSaveSimulationConfig(
   if (!edition) return { status: "error", formError: "No active event edition found." };
 
   const { data: round } = await admin.from("rounds").select("id").eq("kind", "simulation").limit(1).maybeSingle();
+
+  // getSimulationData() never ships answer_key to the browser, so the form
+  // field is blank unless an admin explicitly used "Reveal answer key" and
+  // edited it — the common case (tweaking the timer, say) must fall back
+  // to the config's current key, or saving would silently wipe it.
+  if (answerKey === undefined) {
+    if (!configId) return { status: "error", formError: "An answer key is required for a new config." };
+    const { data: current } = await admin
+      .from("simulation_config")
+      .select("answer_key")
+      .eq("id", configId)
+      .maybeSingle();
+    if (!current) return { status: "error", formError: "Simulation config not found." };
+    answerKey = current.answer_key;
+  }
 
   const { error } = await admin.rpc("admin_save_simulation_config", {
     p_config_id: configId,
@@ -139,6 +164,29 @@ export async function adminSaveSimulationConfig(
 
   revalidatePath("/admin/simulation");
   return { status: "success" };
+}
+
+// Explicit, admin-initiated disclosure — the answer key is never part of
+// getSimulationData()'s payload, so viewing it is a deliberate action
+// logged nowhere by default (unlike regeneration below, which is audited).
+export async function adminRevealAnswerKey(configId: string): Promise<{ answerKey?: unknown; error?: string }> {
+  await requireAdmin();
+  const admin = createAdminClient();
+  const { data, error } = await admin.from("simulation_config").select("answer_key").eq("id", configId).maybeSingle();
+  if (error || !data) return { error: error?.message ?? "Simulation config not found." };
+  return { answerKey: data.answer_key };
+}
+
+export async function adminRegenerateAnswerKeys(configId: string, reason: string): Promise<{ error?: string }> {
+  const adminUser = await requireAdmin();
+  const admin = createAdminClient();
+  const { error } = await admin.rpc("admin_regenerate_simulation_answer_keys", {
+    p_config_id: configId,
+    p_admin_id: adminUser.id,
+    p_reason: reason,
+  });
+  revalidatePath("/admin/simulation");
+  return error ? { error: parseRpcErrorCode(error.message)?.message ?? error.message } : {};
 }
 
 export async function adminSetSimulationLifecycle(configId: string, action: string): Promise<{ error?: string }> {

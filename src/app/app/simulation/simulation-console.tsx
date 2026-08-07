@@ -1,25 +1,27 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Countdown, StatTile, ReconnectBanner, type ConnectionStatus } from "@/components/bidwave";
+import { useReducedMotion } from "motion/react";
+import { Countdown, ReconnectBanner, type ConnectionStatus } from "@/components/bidwave";
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
 import { getSimulationStatusAction, submitSimulationAttemptAction } from "@/app/app/simulation/actions";
+import { SimulationResultPanel } from "@/app/app/simulation/simulation-result-panel";
+import { useCrowdRoar } from "@/app/app/simulation/use-crowd-roar";
 
-type Categorical = { key: string; label: string; default: string; options: { key: string; label: string }[] };
-type SliderParam = { key: string; label: string; min: number; max: number; step: number; default: number };
+type Categorical = {
+  key: string;
+  label: string;
+  default: string;
+  order?: number;
+  options: { key: string; label: string }[];
+};
+type SliderParam = { key: string; label: string; min: number; max: number; step: number; default: number; order?: number };
 type Parameters = { categorical: Categorical[]; sliders: SliderParam[] };
 type Attempt = { id: string; overall: number; success: boolean; sub_scores: Record<string, number>; winner_rank: number | null; server_ts: string };
 
-const SUB_SCORE_LABELS: Record<string, string> = {
-  batting: "BATTING",
-  bowling: "BOWLING",
-  leadership: "LEADERSHIP",
-  fielding: "FIELDING",
-  bench: "BENCH",
-  chemistry: "CHEMISTRY",
-};
+const AUDIO_PREF_KEY = "bidwave.sim.audio";
 
 export function SimulationConsole({
   configId,
@@ -40,11 +42,24 @@ export function SimulationConsole({
     Object.fromEntries(parameters.sliders.map((s) => [s.key, s.default])),
   );
   const [lastResult, setLastResult] = useState<Attempt | null>(history[0] ?? null);
+  const [isFreshSubmission, setIsFreshSubmission] = useState(false);
   const [attempts, setAttempts] = useState<Attempt[]>(history);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [cooldownUntil, setCooldownUntil] = useState<string | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("online");
+  const [audioOn, setAudioOn] = useState(false);
+  const reduceMotion = useReducedMotion();
+  const { prime, play } = useCrowdRoar();
+
+  // Reads the saved audio preference after mount only — localStorage isn't
+  // available during SSR, and reading it during the initial client render
+  // would risk a hydration mismatch the same way an unguarded
+  // useReducedMotion() read would (see page-transition.tsx).
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setAudioOn(window.localStorage.getItem(AUDIO_PREF_KEY) === "1");
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -76,7 +91,18 @@ export function SimulationConsole({
 
   const isActive = status?.status === "active";
 
+  function toggleAudio() {
+    const next = !audioOn;
+    setAudioOn(next);
+    window.localStorage.setItem(AUDIO_PREF_KEY, next ? "1" : "0");
+  }
+
   async function handleAnalyze() {
+    // Must run synchronously, before the `await` below, or the browser's
+    // autoplay policy blocks AudioContext creation/resume entirely — see
+    // use-crowd-roar.ts.
+    if (audioOn && !reduceMotion) prime();
+
     setSubmitting(true);
     setError(null);
     const res = await submitSimulationAttemptAction(configId, { categorical, sliders });
@@ -106,15 +132,12 @@ export function SimulationConsole({
       server_ts: new Date().toISOString(),
     };
     setLastResult(attempt);
+    setIsFreshSubmission(true);
     setAttempts((a) => [attempt, ...a]);
     setCooldownUntil(new Date(Date.now() + submitCooldownSeconds * 1000).toISOString());
+    if (attempt.success && audioOn && !reduceMotion) play();
     toast.success(attempt.success ? "Combination submitted — a winning formula!" : "Combination submitted.");
   }
-
-  const subScoreEntries = useMemo(
-    () => (lastResult ? Object.entries(lastResult.sub_scores) : []),
-    [lastResult],
-  );
 
   return (
     <div className="mx-auto max-w-3xl space-y-8 px-6 py-12">
@@ -136,7 +159,7 @@ export function SimulationConsole({
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        {parameters.categorical.map((param) => (
+        {[...parameters.categorical].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)).map((param) => (
           <div key={param.key} className="space-y-1.5">
             <p className="font-heading text-xs font-semibold uppercase tracking-wide text-ink-2">{param.label}</p>
             <div className="grid grid-cols-2 gap-1.5">
@@ -161,7 +184,7 @@ export function SimulationConsole({
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        {parameters.sliders.map((s) => (
+        {[...parameters.sliders].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)).map((s) => (
           <div key={s.key} className="space-y-1.5">
             <div className="flex items-center justify-between">
               <p className="font-heading text-xs font-semibold uppercase tracking-wide text-ink-2">{s.label}</p>
@@ -181,6 +204,20 @@ export function SimulationConsole({
 
       {error && <p className="text-sm text-unsold">{error}</p>}
 
+      <div className="flex items-center justify-between gap-3">
+        <button
+          type="button"
+          role="switch"
+          aria-checked={audioOn}
+          disabled={reduceMotion === true}
+          onClick={toggleAudio}
+          title={reduceMotion ? "Disabled by your system's reduced-motion setting." : undefined}
+          className="cursor-pointer text-xs text-ink-3 underline decoration-dotted underline-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Crowd audio: {reduceMotion ? "off (reduced motion)" : audioOn ? "on" : "off"}
+        </button>
+      </div>
+
       <Button onClick={handleAnalyze} disabled={!isActive || submitting} size="lg" className="w-full">
         {submitting ? "Analyzing…" : "ANALYZE"}
       </Button>
@@ -191,29 +228,7 @@ export function SimulationConsole({
         </p>
       )}
 
-      {lastResult && (
-        <div className="space-y-4 rounded-xl border border-border bg-card p-6 text-center">
-          <p
-            className={`font-heading text-sm font-semibold uppercase tracking-wide ${
-              lastResult.success ? "text-sold" : "text-ink-2"
-            }`}
-          >
-            {lastResult.success ? "STAR PLAYER" : "AWAITING FORMULA"}
-            {lastResult.winner_rank && ` · Winner rank ${lastResult.winner_rank}`}
-          </p>
-          <p className="font-mono text-4xl font-bold tabular-nums text-gold">{lastResult.overall}</p>
-          {!lastResult.success && (
-            <p className="text-sm text-ink-2">
-              This combination is not one of the four championship formulas. Recalibrate and try again.
-            </p>
-          )}
-          <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
-            {subScoreEntries.map(([key, value]) => (
-              <StatTile key={key} label={SUB_SCORE_LABELS[key] ?? key} value={value} />
-            ))}
-          </div>
-        </div>
-      )}
+      <SimulationResultPanel result={lastResult} isFreshSubmission={isFreshSubmission} />
 
       {attempts.length > 0 && (
         <div className="space-y-2">
