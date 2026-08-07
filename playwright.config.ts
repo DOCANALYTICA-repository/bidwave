@@ -48,7 +48,13 @@ export default defineConfig({
   webServer: {
     command: "npm run dev",
     url: "http://localhost:3000",
-    reuseExistingServer: true,
+    // Must be false: a dev server the developer already had running
+    // (without BIDWAVE_EVENT_EDITION_SLUG) would otherwise be reused as-is,
+    // resolving the LIVE edition instead of the dedicated e2e-test one —
+    // the specs would then quietly run destructive seed/unseed cycles
+    // against production data. See src/lib/event-edition.ts.
+    reuseExistingServer: false,
     timeout: 60_000,
+    env: { BIDWAVE_EVENT_EDITION_SLUG: "e2e-test" },
   },
 });

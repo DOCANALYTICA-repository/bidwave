@@ -31,18 +31,14 @@
 require("dotenv").config({ path: ".env.local" });
 const { Client } = require("pg");
 const { createClient } = require("@supabase/supabase-js");
+const { resolveEditionOrAbort } = require("./resolve-edition.cjs");
 
 async function main() {
   const pg = new Client({ connectionString: process.env.SUPABASE_DB_URL, ssl: { rejectUnauthorized: false } });
   await pg.connect();
 
-  const { rows: editionRows } = await pg.query("select id from public.event_editions where is_active limit 1");
-  if (!editionRows[0]) {
-    console.log("No active event edition — nothing to clean up.");
-    await pg.end();
-    return;
-  }
-  const eventEditionId = editionRows[0].id;
+  const edition = await resolveEditionOrAbort(pg);
+  const eventEditionId = edition.id;
 
   let teamIds = [];
   await pg.query("begin");
@@ -151,9 +147,21 @@ async function main() {
   // under heavy concurrency, confirmed via scripts/load-test-quiz.cjs at
   // ~250-300 simultaneous createUser calls) while the DB delete above
   // still succeeded for that same id, or from an interrupted prior run.
+  //
+  // This query has no event_edition_id to filter on (an orphan's team row
+  // is gone by definition), so unlike everything else in this script it
+  // is NOT scoped to `edition`. Now that seed/unseed can target a
+  // dedicated test edition while a genuinely live edition also exists,
+  // an unscoped sweep here could delete a live captain's account if their
+  // team row were ever momentarily missing (e.g. a concurrent failed
+  // registration). Scope to the seed/test email convention instead
+  // (`*.test.bidwave.local`, same as tests/helpers/db.ts and this file's
+  // own seed accounts) so a run against the test edition can never touch
+  // a real registrant.
   const { rows: orphanRows } = await pg.query(
     `select u.id from auth.users u
      where (u.raw_app_meta_data ->> 'role') = 'team'
+       and u.email like '%test.bidwave.local'
        and not exists (select 1 from public.teams t where t.id = u.id)`,
   );
   await pg.end();

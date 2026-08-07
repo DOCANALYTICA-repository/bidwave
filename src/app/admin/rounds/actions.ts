@@ -13,6 +13,7 @@ import {
   ROUND_ERROR_FIELD,
 } from "@/lib/validation/rounds";
 import type { AdminRoundRow } from "@/app/admin/rounds/rounds-table";
+import { selectCurrentEdition } from "@/lib/event-edition";
 
 export type RoundsQueryResult = {
   rounds: AdminRoundRow[];
@@ -82,7 +83,7 @@ export async function adminSaveRound(
   }
 
   const admin = createAdminClient();
-  const { data: edition } = await admin.from("event_editions").select("id").eq("is_active", true).maybeSingle();
+  const { data: edition } = await selectCurrentEdition(admin);
   if (!edition) return fail("No active event edition found.");
 
   const { error } = await admin.rpc("admin_upsert_round", {

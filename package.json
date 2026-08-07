@@ -16,6 +16,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "test:ensure-edition": "node scripts/ensure-test-edition.cjs",
     "seed:demo": "node scripts/seed-demo.cjs",
     "unseed:demo": "node scripts/unseed-demo.cjs",
     "load-test:registration": "node scripts/load-test-registration.cjs",

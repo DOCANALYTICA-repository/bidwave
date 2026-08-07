@@ -3,6 +3,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getLeaderboardData } from "@/app/admin/leaderboard/actions";
 import { LeaderboardLive } from "@/app/admin/leaderboard/leaderboard-live";
+import { selectCurrentEdition } from "@/lib/event-edition";
 
 export const metadata: Metadata = { title: "Leaderboard" };
 
@@ -14,7 +15,7 @@ export const metadata: Metadata = { title: "Leaderboard" };
  */
 export default async function AdminLeaderboardPage() {
   const supabase = await createClient();
-  const { data: edition } = await supabase.from("event_editions").select("id").eq("is_active", true).maybeSingle();
+  const { data: edition } = await selectCurrentEdition(supabase);
   const eventEditionId = edition?.id ?? null;
 
   const initial = eventEditionId

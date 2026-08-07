@@ -6,6 +6,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdmin } from "@/lib/require-role";
 import { parseRpcErrorCode } from "@/lib/validation/registration";
 import type { Database } from "@/lib/supabase/types";
+import { selectCurrentEdition } from "@/lib/event-edition";
 
 export type SimActionState = { status: "idle" | "error" | "success"; formError?: string };
 
@@ -114,7 +115,7 @@ export async function adminSaveSimulationConfig(
   }
 
   const admin = createAdminClient();
-  const { data: edition } = await admin.from("event_editions").select("id").eq("is_active", true).maybeSingle();
+  const { data: edition } = await selectCurrentEdition(admin);
   if (!edition) return { status: "error", formError: "No active event edition found." };
 
   const { data: round } = await admin.from("rounds").select("id").eq("kind", "simulation").limit(1).maybeSingle();

@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { BackLink } from "@/components/bidwave";
 import { SimulationConsole } from "@/app/app/simulation/simulation-console";
+import { selectCurrentEdition } from "@/lib/event-edition";
 
 export const metadata: Metadata = { title: "Simulation" };
 
@@ -18,7 +19,7 @@ export default async function TeamSimulationPage() {
   // never reach a team via `select *`) — the admin client reads only the
   // public-safe `parameters` column here, never scoring/answer_key.
   const admin = createAdminClient();
-  const { data: edition } = await admin.from("event_editions").select("id").eq("is_active", true).maybeSingle();
+  const { data: edition } = await selectCurrentEdition(admin);
 
   // C3: scoped to the active edition explicitly — previously the single
   // most-recently-created config was loaded with no edition filter at all,

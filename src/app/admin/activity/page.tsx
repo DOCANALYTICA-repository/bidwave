@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { ActivityLog, type ActivityRow, type AuditRow } from "@/app/admin/activity/activity-log";
+import { selectCurrentEdition } from "@/lib/event-edition";
 
 export const metadata: Metadata = { title: "Activity" };
 export const dynamic = "force-dynamic";
@@ -15,11 +16,7 @@ export const dynamic = "force-dynamic";
 export default async function AdminActivityPage() {
   const supabase = await createClient();
 
-  const { data: edition } = await supabase
-    .from("event_editions")
-    .select("id")
-    .eq("is_active", true)
-    .maybeSingle();
+  const { data: edition } = await selectCurrentEdition(supabase);
 
   if (!edition) {
     return (

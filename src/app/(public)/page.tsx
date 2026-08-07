@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { getSettings } from "@/lib/supabase/settings";
+import { selectCurrentEdition } from "@/lib/event-edition";
 import { Hero } from "@/components/marketing/hero";
 import { AboutSection } from "@/components/marketing/about-section";
 import { GuidelinesSection } from "@/components/marketing/guidelines-section";
@@ -12,11 +13,11 @@ export default async function HomePage() {
   const supabase = await createClient();
   const [{ data: userResult }, { data: edition }, settings] = await Promise.all([
     supabase.auth.getUser(),
-    supabase
-      .from("event_editions")
-      .select("id, registration_opens_at, registration_closes_at")
-      .eq("is_active", true)
-      .maybeSingle(),
+    selectCurrentEdition<{
+      id: string;
+      registration_opens_at: string | null;
+      registration_closes_at: string | null;
+    }>(supabase, "id, registration_opens_at, registration_closes_at"),
     getSettings(["registration_fee"]),
   ]);
 

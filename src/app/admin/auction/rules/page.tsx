@@ -1,17 +1,14 @@
 import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
 import { RuleSetForm } from "@/app/admin/auction/rules/rule-set-form";
+import { selectCurrentEdition } from "@/lib/event-edition";
 
 export const metadata: Metadata = { title: "Auction — Rules" };
 
 export default async function AdminAuctionRulesPage() {
   const supabase = await createClient();
 
-  const { data: edition } = await supabase
-    .from("event_editions")
-    .select("id")
-    .eq("is_active", true)
-    .maybeSingle();
+  const { data: edition } = await selectCurrentEdition(supabase);
 
   const [{ data: ruleSet }, { data: rounds }] = await Promise.all([
     edition

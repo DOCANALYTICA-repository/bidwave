@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getStageStandings } from "@/app/admin/stages/actions";
 import { LeaderboardPublisher } from "@/app/admin/leaderboard/leaderboard-publisher";
 import { DataTable, type DataTableColumn } from "@/components/bidwave";
+import { selectCurrentEdition } from "@/lib/event-edition";
 
 export const metadata: Metadata = { title: "Final Results" };
 export const dynamic = "force-dynamic";
@@ -22,7 +23,7 @@ type Standing = { team_id: string; team_name: string; aggregate: number; rank: n
  */
 export default async function AdminFinalResultsPage() {
   const supabase = await createClient();
-  const { data: edition } = await supabase.from("event_editions").select("id").eq("is_active", true).maybeSingle();
+  const { data: edition } = await selectCurrentEdition(supabase);
 
   const [{ data: stages }, { data: teams }, { data: qualifications }, { data: liveFinal }] = await Promise.all([
     supabase.from("stages").select("id, code, label").eq("event_edition_id", edition?.id ?? "").order("code"),

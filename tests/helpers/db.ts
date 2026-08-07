@@ -63,9 +63,21 @@ export async function asRole(
   await client.query(`set local role ${role}`);
 }
 
+/**
+ * Vitest suites roll back every transaction, so touching the live edition
+ * is inherently safe here (unlike the e2e suite's destructive seed/unseed
+ * scripts) — but honoring BIDWAVE_EVENT_EDITION_SLUG when set means these
+ * integration tests exercise the same `e2e-test` edition Playwright does,
+ * rather than silently diverging. Kept as getActiveEventEditionId (not
+ * renamed) since every existing test file already imports it under that
+ * name; the behavior is a superset of "active edition" now.
+ */
 export async function getActiveEventEditionId(client: Client): Promise<string> {
-  const { rows } = await client.query("select id from public.event_editions where is_active limit 1");
-  if (!rows[0]) throw new Error("No active event edition in the hosted DB.");
+  const slug = process.env.BIDWAVE_EVENT_EDITION_SLUG;
+  const { rows } = slug
+    ? await client.query("select id from public.event_editions where slug = $1", [slug])
+    : await client.query("select id from public.event_editions where is_active limit 1");
+  if (!rows[0]) throw new Error(slug ? `No event edition with slug '${slug}'.` : "No active event edition in the hosted DB.");
   return rows[0].id;
 }
 

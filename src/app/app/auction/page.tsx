@@ -3,6 +3,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { StatTile, Money, MoneyDelta, EmptyState, StatusPill } from "@/components/bidwave";
 import { TeamAuctionRealtime } from "@/app/app/auction/team-auction-realtime";
+import { selectCurrentEdition } from "@/lib/event-edition";
 
 export const metadata: Metadata = { title: "Auction" };
 export const dynamic = "force-dynamic";
@@ -20,11 +21,7 @@ export default async function TeamAuctionPage() {
   } = await supabase.auth.getUser();
   if (!user) return null;
 
-  const { data: edition } = await supabase
-    .from("event_editions")
-    .select("id")
-    .eq("is_active", true)
-    .maybeSingle();
+  const { data: edition } = await selectCurrentEdition(supabase);
   if (!edition) return <div className="p-10 text-ink-2">No active event edition.</div>;
 
   const [{ data: roster }, { data: ledger }, { data: ruleSet }, { data: balanceRow }] = await Promise.all([

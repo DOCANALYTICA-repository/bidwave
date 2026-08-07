@@ -2,12 +2,13 @@ import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
 import { getStagesData } from "@/app/admin/stages/actions";
 import { StagesLive } from "@/app/admin/stages/stages-live";
+import { selectCurrentEdition } from "@/lib/event-edition";
 
 export const metadata: Metadata = { title: "Stages" };
 
 export default async function AdminStagesPage() {
   const supabase = await createClient();
-  const { data: edition } = await supabase.from("event_editions").select("id").eq("is_active", true).maybeSingle();
+  const { data: edition } = await selectCurrentEdition(supabase);
   const eventEditionId = edition?.id ?? null;
 
   const initial = await getStagesData();

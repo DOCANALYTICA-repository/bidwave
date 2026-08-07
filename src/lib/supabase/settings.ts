@@ -1,6 +1,7 @@
 import "server-only";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { selectCurrentEdition } from "@/lib/event-edition";
 
 /**
  * PUB-08: landing-page content that must be admin-editable with no code
@@ -44,11 +45,7 @@ export async function getSettings<K extends SettingsKey>(
   const supabase = await createClient();
   const result: Partial<Record<SettingsKey, unknown>> = {};
 
-  const { data: edition } = await supabase
-    .from("event_editions")
-    .select("id")
-    .eq("is_active", true)
-    .maybeSingle();
+  const { data: edition } = await selectCurrentEdition(supabase);
   if (!edition) return result as { [P in K]?: SettingsValue<P> };
 
   const { data: rows } = await supabase

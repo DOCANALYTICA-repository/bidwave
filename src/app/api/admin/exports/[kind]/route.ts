@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import Papa from "papaparse";
 import ExcelJS from "exceljs";
 import * as archiverNs from "archiver";
+import { selectCurrentEdition } from "@/lib/event-edition";
 
 // @types/archiver ships no callable signature for the module's actual
 // runtime export (a factory function), only the Archiver/ZipArchive
@@ -47,7 +48,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ kind
   }
 
   const admin = createAdminClient();
-  const { data: edition } = await admin.from("event_editions").select("id").eq("is_active", true).maybeSingle();
+  const { data: edition } = await selectCurrentEdition(admin);
   if (!edition) {
     logger.error("export_failed", { kind, reason: "no_active_event_edition" });
     return NextResponse.json({ error: "no_active_event_edition" }, { status: 400 });

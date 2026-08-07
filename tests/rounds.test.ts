@@ -148,6 +148,42 @@ describe("AT-SCR-01: stage aggregate ranking", () => {
       expect(Number(byTeam.get(teamC)!.rank)).toBe(3);
     });
   });
+
+  // 20260807090000 — stage_standings() used to `cross join public.teams`
+  // with no event_edition_id filter, so a stage in one edition silently
+  // pulled in every team from every other edition too. Invisible as long
+  // as only one edition ever held teams; surfaced once
+  // BIDWAVE_EVENT_EDITION_SLUG (src/lib/event-edition.ts) made a second,
+  // real edition with its own teams a normal condition.
+  it("never includes a team from a different event edition", async () => {
+    await withTx(async (client) => {
+      const editionId = await getActiveEventEditionId(client);
+      const teamA = await createTestTeam(client, { name: `SCR-01 Isolated A ${Date.now()}`, eventEditionId: editionId });
+
+      const { rows: otherEditionRows } = await client.query<{ id: string }>(
+        `insert into public.event_editions (name, slug, starts_on, ends_on, is_active)
+         values ('Other Edition', $1, current_date, current_date, false)
+         returning id`,
+        [`other-edition-${Date.now()}`],
+      );
+      const otherEditionId = otherEditionRows[0]!.id;
+      await createTestTeam(client, { name: `SCR-01 Isolated Other ${Date.now()}`, eventEditionId: otherEditionId });
+
+      const { rows: stageRows } = await client.query<{ id: string }>(
+        `select id from public.stages where event_edition_id = $1 and code = 'r1_r2'`,
+        [editionId],
+      );
+      const stageId = stageRows[0]!.id;
+
+      const { rows: standings } = await client.query(
+        `select team_id from public.stage_standings($1)`,
+        [stageId],
+      );
+
+      expect(standings.map((s) => s.team_id)).toContain(teamA);
+      expect(standings).toHaveLength(1);
+    });
+  });
 });
 
 describe("AT-LDB-01: entering scores never moves the public leaderboard until published", () => {

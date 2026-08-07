@@ -20,6 +20,7 @@
 require("dotenv").config({ path: ".env.local" });
 const { Client } = require("pg");
 const { createClient } = require("@supabase/supabase-js");
+const { resolveEditionOrAbort } = require("./resolve-edition.cjs");
 
 const DEMO_PASSWORD = "BidwaveDemo!1";
 
@@ -40,9 +41,8 @@ async function main() {
   const pg = new Client({ connectionString: process.env.SUPABASE_DB_URL, ssl: { rejectUnauthorized: false } });
   await pg.connect();
 
-  const { rows: editionRows } = await pg.query("select id from public.event_editions where is_active limit 1");
-  if (!editionRows[0]) throw new Error("No active event edition — run migrations first.");
-  const eventEditionId = editionRows[0].id;
+  const edition = await resolveEditionOrAbort(pg);
+  const eventEditionId = edition.id;
 
   // Independent of the team-seeding early-return below: `unseed:demo`
   // unconditionally deletes every simulation_config row for the active
@@ -168,9 +168,13 @@ async function main() {
     );
   }
 
+  // Scoped to the target edition — unscoped, this falsely short-circuited
+  // seeding the test edition whenever the live edition already had demo
+  // teams (or vice versa), since team names are reused verbatim across
+  // editions by design.
   const { rows: existing } = await pg.query(
-    "select count(*) as n from public.teams where name = $1",
-    [TEAM_NAMES[0]],
+    "select count(*) as n from public.teams where name = $1 and event_edition_id = $2",
+    [TEAM_NAMES[0], eventEditionId],
   );
   if (Number(existing[0].n) > 0) {
     console.log("Demo data already present (found '" + TEAM_NAMES[0] + "') — nothing to do.");

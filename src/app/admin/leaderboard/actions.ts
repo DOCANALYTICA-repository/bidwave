@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdmin } from "@/lib/require-role";
+import { selectCurrentEdition } from "@/lib/event-edition";
 
 export type LeaderboardQueryResult = {
   teams: { id: string; name: string }[];
@@ -41,7 +42,7 @@ export async function adminPublishLeaderboard(
 ): Promise<{ error?: string }> {
   const adminUser = await requireAdmin();
   const admin = createAdminClient();
-  const { data: edition } = await admin.from("event_editions").select("id").eq("is_active", true).maybeSingle();
+  const { data: edition } = await selectCurrentEdition(admin);
   if (!edition) return { error: "No active event edition." };
   const { error } = await admin.rpc("admin_publish_leaderboard", {
     p_event_edition_id: edition.id,

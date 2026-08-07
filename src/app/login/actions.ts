@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { checkRateLimit, clientIpKey } from "@/lib/rate-limit";
 import { loginSchema } from "@/lib/validation/auth";
+import { selectCurrentEdition } from "@/lib/event-edition";
 
 export type LoginActionState = {
   status: "idle" | "error";
@@ -33,11 +34,7 @@ export async function login(
   }
 
   const admin = createAdminClient();
-  const { data: edition } = await admin
-    .from("event_editions")
-    .select("id")
-    .eq("is_active", true)
-    .maybeSingle();
+  const { data: edition } = await selectCurrentEdition(admin);
 
   const supabase = await createClient();
   const { data, error } = await supabase.auth.signInWithPassword(result.data);

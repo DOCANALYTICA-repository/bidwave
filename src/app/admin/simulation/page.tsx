@@ -2,12 +2,13 @@ import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
 import { getSimulationData } from "@/app/admin/simulation/actions";
 import { SimulationLive } from "@/app/admin/simulation/simulation-live";
+import { selectCurrentEdition } from "@/lib/event-edition";
 
 export const metadata: Metadata = { title: "Simulation" };
 
 export default async function AdminSimulationPage() {
   const supabase = await createClient();
-  const { data: edition } = await supabase.from("event_editions").select("id").eq("is_active", true).maybeSingle();
+  const { data: edition } = await selectCurrentEdition(supabase);
   const eventEditionId = edition?.id ?? null;
 
   const initial = eventEditionId

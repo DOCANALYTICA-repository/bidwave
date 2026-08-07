@@ -439,3 +439,93 @@ comment on function public.admin_upsert_quiz_question(uuid, uuid, int, text, int
   'client-supplied position, and never FOR UPDATE on an aggregate (illegal, '
   'and shipped broken in 20260806120000). Position for an edit of an '
   'existing question is still the caller''s explicit choice.';
+
+-- ---------------------------------------------------------------------------
+-- 5. Fix stage_standings(): cross-joined public.teams with NO
+--    event_edition_id filter at all, so it silently pulled in every team
+--    from every edition rather than just the target stage's own edition.
+--    Invisible as long as only one edition ever had teams in it — surfaced
+--    once a second, non-active edition (BIDWAVE_EVENT_EDITION_SLUG /
+--    src/lib/event-edition.ts) started holding real seeded teams
+--    alongside the live one.
+-- ---------------------------------------------------------------------------
+
+create or replace function public.stage_standings(p_stage_id uuid)
+returns table (team_id uuid, team_name citext, aggregate numeric, rank int)
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare
+  v_rule1 jsonb;
+  v_rule2 jsonb;
+  v_event_edition_id uuid;
+begin
+  select tie_breaker_rules -> 0, tie_breaker_rules -> 1, event_edition_id
+  into v_rule1, v_rule2, v_event_edition_id
+  from public.stages where id = p_stage_id;
+
+  return query
+  with round_scores as (
+    select sr.round_id, sr.weight
+    from public.stage_rounds sr
+    where sr.stage_id = p_stage_id
+  ),
+  weighted as (
+    select t.id as team_id,
+           coalesce(sum(s.total * rs.weight), 0) as weighted_total
+    from public.teams t
+    cross join round_scores rs
+    left join public.scores s on s.round_id = rs.round_id and s.team_id = t.id
+    where t.event_edition_id = v_event_edition_id
+    group by t.id
+  ),
+  adjustments as (
+    -- Table-qualified: stage_standings' OUT parameter is also named
+    -- team_id, and PL/pgSQL treats a bare column reference here as
+    -- ambiguous between the two rather than resolving it to the table.
+    select stage_adjustments.team_id, sum(amount) as adj_total
+    from public.stage_adjustments
+    where stage_id = p_stage_id
+    group by stage_adjustments.team_id
+  ),
+  tie1 as (
+    select s.team_id, s.total as v
+    from public.scores s
+    where v_rule1 is not null
+      and v_rule1 ->> 'kind' = 'higher_round_score'
+      and s.round_id = (v_rule1 ->> 'round_id')::uuid
+  ),
+  tie2 as (
+    select sub.team_id, sub.submitted_at as v
+    from public.submissions sub
+    where v_rule2 is not null
+      and v_rule2 ->> 'kind' = 'earlier_submission'
+      and sub.round_id = (v_rule2 ->> 'round_id')::uuid
+  )
+  select
+    w.team_id,
+    tm.name,
+    (w.weighted_total + coalesce(a.adj_total, 0))::numeric as aggregate,
+    (rank() over (
+      order by w.weighted_total + coalesce(a.adj_total, 0) desc,
+               t1.v desc nulls last,
+               t2.v asc nulls last
+    ))::int as rank
+  from weighted w
+  join public.teams tm on tm.id = w.team_id
+  left join adjustments a on a.team_id = w.team_id
+  left join tie1 t1 on t1.team_id = w.team_id
+  left join tie2 t2 on t2.team_id = w.team_id
+  order by aggregate desc;
+end;
+$$;
+
+comment on function public.stage_standings(uuid) is
+  'SCR-01/02/07: a team with no score for a contributing round is ranked '
+  'with that component as 0, never silently excluded. Tie-breaker rules '
+  'are a small closed vocabulary (see stages.tie_breaker_rules), not open '
+  'SQL — "higher_round_score" and "earlier_submission" are the only kinds '
+  'understood here today. Scoped to the stage''s own event_edition_id '
+  '(20260807090000) — previously cross-joined every team in every edition.';

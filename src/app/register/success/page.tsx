@@ -4,6 +4,7 @@ import { CheckCircle2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { BrandMark } from "@/components/bidwave";
 import { Button } from "@/components/ui/button";
+import { selectCurrentEdition } from "@/lib/event-edition";
 
 export const metadata: Metadata = { title: "Registration complete" };
 
@@ -19,11 +20,7 @@ export default async function RegisterSuccessPage({
   const { team: teamName } = await searchParams;
 
   const supabase = await createClient();
-  const { data: edition } = await supabase
-    .from("event_editions")
-    .select("id")
-    .eq("is_active", true)
-    .maybeSingle();
+  const { data: edition } = await selectCurrentEdition(supabase);
 
   let whatsappLink: string | null = null;
   if (edition) {

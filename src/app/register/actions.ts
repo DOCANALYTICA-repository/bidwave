@@ -10,6 +10,7 @@ import {
   parseRpcErrorCode,
   REGISTRATION_ERROR_FIELD,
 } from "@/lib/validation/registration";
+import { selectCurrentEdition } from "@/lib/event-edition";
 
 export type RegisterActionState = {
   status: "idle" | "error";
@@ -77,11 +78,7 @@ export async function registerTeam(
   const captain = details.members.find((m) => m.isCaptain)!;
 
   const serverClient = await createClient();
-  const { data: edition, error: editionError } = await serverClient
-    .from("event_editions")
-    .select("id")
-    .eq("is_active", true)
-    .maybeSingle();
+  const { data: edition, error: editionError } = await selectCurrentEdition(serverClient);
 
   if (editionError || !edition) {
     return {

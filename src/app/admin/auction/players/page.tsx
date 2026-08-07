@@ -2,17 +2,14 @@ import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
 import { PlayersTable } from "@/app/admin/auction/players/players-table";
 import { PlayerImportForm } from "@/app/admin/auction/players/player-import-form";
+import { selectCurrentEdition } from "@/lib/event-edition";
 
 export const metadata: Metadata = { title: "Auction — Players" };
 
 export default async function AdminAuctionPlayersPage() {
   const supabase = await createClient();
 
-  const { data: edition } = await supabase
-    .from("event_editions")
-    .select("id")
-    .eq("is_active", true)
-    .maybeSingle();
+  const { data: edition } = await selectCurrentEdition(supabase);
 
   const [{ data: players }, { data: rounds }] = await Promise.all([
     edition

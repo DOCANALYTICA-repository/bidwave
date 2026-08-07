@@ -2,12 +2,13 @@ import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
 import { getAnnouncementsData } from "@/app/admin/announcements/actions";
 import { AnnouncementsLive } from "@/app/admin/announcements/announcements-live";
+import { selectCurrentEdition } from "@/lib/event-edition";
 
 export const metadata: Metadata = { title: "Announcements" };
 
 export default async function AdminAnnouncementsPage() {
   const supabase = await createClient();
-  const { data: edition } = await supabase.from("event_editions").select("id").eq("is_active", true).maybeSingle();
+  const { data: edition } = await selectCurrentEdition(supabase);
 
   const announcements = edition ? await getAnnouncementsData(edition.id) : [];
 

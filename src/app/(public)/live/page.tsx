@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
 import { Countdown, EmptyState, StatusPill, Money } from "@/components/bidwave";
 import { LiveRealtime } from "@/app/(public)/live/live-realtime";
+import { selectCurrentEdition } from "@/lib/event-edition";
 
 export const metadata: Metadata = { title: "Live Auction" };
 export const dynamic = "force-dynamic";
@@ -18,11 +19,7 @@ export default async function LivePage() {
   const supabase = await createClient();
   const serverNowAtMount = new Date().toISOString();
 
-  const { data: edition } = await supabase
-    .from("event_editions")
-    .select("id")
-    .eq("is_active", true)
-    .maybeSingle();
+  const { data: edition } = await selectCurrentEdition(supabase);
 
   const { data: round } = await supabase
     .from("rounds_with_status")
