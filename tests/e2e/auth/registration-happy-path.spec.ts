@@ -70,7 +70,7 @@ test("a fresh team can register, then log in to its dashboard", async ({ page })
   // Step 3: captain credentials — the shared team login is the captain's
   // CHRIST email from the previous step (read-only here).
   await expect(page.getByText(captainEmail)).toBeVisible();
-  await page.getByLabel("Password").fill(captainPassword);
+  await page.getByLabel("Password", { exact: true }).fill(captainPassword);
   await page.getByLabel("Confirm password").fill(captainPassword);
   await page.getByRole("button", { name: "Next", exact: true }).click();
 

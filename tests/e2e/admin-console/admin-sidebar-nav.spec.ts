@@ -14,7 +14,7 @@ test.describe("admin sidebar active-link highlighting", () => {
     await loginAsAdmin(page);
 
     await page.goto("/admin/rounds");
-    const roundsLink = page.getByRole("link", { name: "Rounds" });
+    const roundsLink = page.getByRole("link", { name: "Rounds", exact: true });
     const teamsLink = page.getByRole("link", { name: "Teams" });
     const roundsActiveBg = await roundsLink.evaluate((el) => getComputedStyle(el).backgroundColor);
     const teamsInactiveBg = await teamsLink.evaluate((el) => getComputedStyle(el).backgroundColor);
@@ -36,7 +36,7 @@ test.describe("admin sidebar active-link highlighting", () => {
     await page.goto(href!);
     await expect(page).toHaveURL(/\/admin\/rounds\/.+/);
 
-    const roundsLink = page.getByRole("link", { name: "Rounds" });
+    const roundsLink = page.getByRole("link", { name: "Rounds", exact: true });
     const teamsLink = page.getByRole("link", { name: "Teams" });
     const roundsBg = await roundsLink.evaluate((el) => getComputedStyle(el).backgroundColor);
     const teamsBg = await teamsLink.evaluate((el) => getComputedStyle(el).backgroundColor);

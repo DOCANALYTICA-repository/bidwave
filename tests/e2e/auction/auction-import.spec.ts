@@ -32,7 +32,7 @@ test.describe("auction player import", () => {
       .locator('input[type="file"]')
       .setInputFiles({ name: "e2e-import.csv", mimeType: "text/csv", buffer: Buffer.from(csv, "utf-8") });
 
-    await page.getByRole("button", { name: "Import" }).click();
+    await page.getByRole("button", { name: "Import", exact: true }).click();
 
     await expect(page.getByText("1 player(s) imported.")).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText("1 row(s) had errors")).toBeVisible();

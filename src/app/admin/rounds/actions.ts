@@ -241,7 +241,14 @@ export async function adminSaveScore(
     expectedUpdatedAt: (formData.get("expectedUpdatedAt") as string) || null,
     total: formData.get("total") || 0,
     maxTotal: formData.get("maxTotal") || undefined,
-    notes: formData.get("notes"),
+    // formData.get() returns null (not undefined) for a field that was
+    // never set — score-row.tsx's form never includes a "notes" field at
+    // all, so this was always null, and scoreFormSchema's `notes` only
+    // accepts undefined/string/"" (not null), rejecting every real save
+    // with a generic "Invalid input." Confirmed by direct e2e reproduction
+    // that admin score-saving was completely broken as a result. The
+    // sibling fields on this same line already normalize this way.
+    notes: formData.get("notes") || undefined,
   });
 
   if (!result.success) return fail(result.error.issues[0]?.message ?? "Invalid input.");

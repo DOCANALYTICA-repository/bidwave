@@ -64,7 +64,10 @@ test.describe("simulation admin controls", () => {
     const stopButton = page.getByRole("button", { name: "Stop" });
     if (await stopButton.isEnabled()) {
       await stopButton.click();
-      await expect(page.getByText(/Stopped/)).toBeVisible();
+      // Case-insensitive: the immediate toast reads "Simulation stopped."
+      // (lowercase), while the persisted status line reads "· Stopped
+      // {timestamp}" (capitalized) once the query invalidation refetches.
+      await expect(page.getByText(/stopped/i).first()).toBeVisible();
     }
     await expect(page.getByRole("button", { name: "Restart…" })).toBeVisible();
 

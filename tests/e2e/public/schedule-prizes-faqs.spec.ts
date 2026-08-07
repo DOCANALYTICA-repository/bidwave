@@ -13,7 +13,7 @@ test.describe("schedule", () => {
     await page.goto("/schedule");
 
     await expect(page.getByRole("heading", { name: "Schedule", exact: true })).toBeVisible();
-    await expect(page.getByText("17–19 August 2026 · CHRIST University")).toBeVisible();
+    await expect(page.getByText("17–19 August 2026 · CHRIST University").first()).toBeVisible();
 
     await expect(page.getByRole("heading", { name: "Online" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Day 1" })).toBeVisible();
