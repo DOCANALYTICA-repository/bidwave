@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -99,9 +99,13 @@ function TeamDetailContent({
   const [invoiceLoading, setInvoiceLoading] = useState(false);
 
   const queryClient = useQueryClient();
-  const [lastHandledUpdateState, setLastHandledUpdateState] = useState(updateState);
-  if (updateState !== lastHandledUpdateState) {
-    setLastHandledUpdateState(updateState);
+  // toast() and invalidateQueries() are external side effects and must run
+  // from an effect, not the render body — the previous "adjust state
+  // during render" version (comparing against a lastHandled* copy) fired
+  // them inline during render, which can double-fire under
+  // StrictMode/an interrupted render. request-analytics-form.tsx already
+  // does this correctly via useEffect; this now matches it.
+  useEffect(() => {
     if (updateState.status === "success") {
       toast.success("Team details saved.");
       // The 'teams' broadcast_live() ping will also invalidate this, but
@@ -109,14 +113,12 @@ function TeamDetailContent({
       queryClient.invalidateQueries({ queryKey: ["admin", "teams"] });
     }
     if (updateState.status === "error" && updateState.formError) toast.error(updateState.formError);
-  }
+  }, [updateState, queryClient]);
 
-  const [lastHandledResetState, setLastHandledResetState] = useState(resetState);
-  if (resetState !== lastHandledResetState) {
-    setLastHandledResetState(resetState);
+  useEffect(() => {
     if (resetState.status === "success") toast.success("Password updated.");
     if (resetState.status === "error" && resetState.formError) toast.error(resetState.formError);
-  }
+  }, [resetState]);
 
   function handleSave() {
     const fd = new FormData();

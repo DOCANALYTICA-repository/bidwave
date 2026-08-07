@@ -60,19 +60,20 @@ export default async function RoundDetailPage({
 
     materials = data ?? [];
 
-    // Real gap: the submissions bucket's only select policy checks
-    // (storage.foldername(name))[1] = auth.uid()::text, which a material
-    // path (first segment is a round id, not a team id) can never match,
-    // and there's no anon policy at all — so a publicly-released file
-    // material would otherwise be undownloadable by anyone. RLS above
-    // already confirmed public eligibility for this round; the admin
-    // client here only mints a signed URL, it doesn't bypass any
-    // authorization decision.
+    // Round materials are uploaded to the round-materials bucket
+    // (src/app/admin/rounds/actions.ts), not submissions — signing from
+    // the wrong bucket here made createSignedUrl always fail (object not
+    // found), so the Download link below silently never rendered for any
+    // publicly released material. round-materials has no anon/team select
+    // policy either (team-facing reads already go admin-side too, see
+    // src/app/app/rounds/[id]/page.tsx), so the admin client here only
+    // mints a signed URL — it doesn't bypass any authorization decision;
+    // RLS above already confirmed public eligibility for this round.
     const fileRows = materials.filter((m) => m.kind === "file" && m.storage_path);
     if (fileRows.length > 0) {
       const admin = createAdminClient();
       const signed = await Promise.all(
-        fileRows.map((m) => admin.storage.from("submissions").createSignedUrl(m.storage_path!, 300)),
+        fileRows.map((m) => admin.storage.from("round-materials").createSignedUrl(m.storage_path!, 300)),
       );
       const urlByPath = new Map(
         fileRows.map((m, i) => [m.storage_path, signed[i].data?.signedUrl ?? null]),

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { UploadCloud, File as FileIcon, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -47,10 +47,21 @@ export function FileDrop({
   const inputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [oversizeError, setOversizeError] = useState<string | null>(null);
+  // Before hydration completes, the server-rendered <label>/<input> are
+  // already real, clickable DOM — a click opens the native file picker,
+  // but the resulting `change` event fires before React has attached its
+  // delegated onChange listener, so the selection is silently lost
+  // (browsers never replay a past event for a listener added afterward).
+  // Disabling the input until mounted closes that window; this is a
+  // hydration-safety gate, not a real disabled state, so it deliberately
+  // does not affect the server-rendered markup's appearance.
+  const [mounted, setMounted] = useState(false);
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => setMounted(true), []);
 
   const addFiles = useCallback(
     (incoming: FileList | null) => {
-      if (!incoming || disabled) return;
+      if (!incoming || disabled || !mounted) return;
       const next = Array.from(incoming);
       const oversized = maxSizeBytes
         ? next.filter((f) => f.size > maxSizeBytes)
@@ -67,7 +78,7 @@ export function FileDrop({
       const accepted = next.filter((f) => !oversized.includes(f));
       onChange(multiple ? [...value, ...accepted] : accepted.slice(0, 1));
     },
-    [disabled, maxSizeBytes, multiple, onChange, value],
+    [disabled, mounted, maxSizeBytes, multiple, onChange, value],
   );
 
   return (
@@ -105,7 +116,7 @@ export function FileDrop({
           type="file"
           accept={accept}
           multiple={multiple}
-          disabled={disabled}
+          disabled={disabled || !mounted}
           className="sr-only"
           onChange={(e) => {
             addFiles(e.target.files);
