@@ -20,7 +20,13 @@ export default async function AdminAuctionPlayersPage() {
           .order("pool")
           .order("full_name")
       : Promise.resolve({ data: [] }),
-    supabase.from("rounds").select("id, title").eq("kind", "auction"),
+    edition
+      ? supabase
+          .from("rounds")
+          .select("id, title")
+          .eq("kind", "auction")
+          .eq("event_edition_id", edition.id)
+      : Promise.resolve({ data: [] }),
   ]);
 
   return (

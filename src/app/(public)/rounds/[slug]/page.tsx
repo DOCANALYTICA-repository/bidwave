@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { ROUND_COPY, type RoundSlug } from "@/lib/rounds-catalog";
 import { EmptyState, StatusPill } from "@/components/bidwave";
+import { selectCurrentEdition } from "@/lib/event-edition";
 
 export const dynamic = "force-dynamic";
 
@@ -35,11 +36,15 @@ export default async function RoundDetailPage({
   if (!copy) notFound();
 
   const supabase = await createClient();
-  const { data: round } = await supabase
-    .from("rounds_with_status")
-    .select("id, status")
-    .eq("slug", slug)
-    .maybeSingle();
+  const { data: edition } = await selectCurrentEdition(supabase);
+  const { data: round } = edition
+    ? await supabase
+        .from("rounds_with_status")
+        .select("id, status")
+        .eq("slug", slug)
+        .eq("event_edition_id", edition.id)
+        .maybeSingle()
+    : { data: null };
 
   let materials: {
     id: string;

@@ -2,13 +2,17 @@ import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
 import { ROUND_COPY_LIST } from "@/lib/rounds-catalog";
 import { RoundCard } from "@/components/marketing/round-card";
+import { selectCurrentEdition } from "@/lib/event-edition";
 
 export const metadata: Metadata = { title: "Rounds" };
 export const dynamic = "force-dynamic";
 
 export default async function RoundsPage() {
   const supabase = await createClient();
-  const { data: rounds } = await supabase.from("rounds_with_status").select("slug");
+  const { data: edition } = await selectCurrentEdition(supabase);
+  const { data: rounds } = edition
+    ? await supabase.from("rounds_with_status").select("slug").eq("event_edition_id", edition.id)
+    : { data: [] };
   const releasedSlugs = new Set((rounds ?? []).map((r) => r.slug));
 
   return (

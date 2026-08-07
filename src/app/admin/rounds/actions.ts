@@ -27,8 +27,15 @@ export type RoundsQueryResult = {
 export async function getRoundsData(): Promise<RoundsQueryResult> {
   await requireAdmin();
   const supabase = await createClient();
+  const { data: edition } = await selectCurrentEdition(supabase);
   const [{ data: rounds, error }, { data: stages }] = await Promise.all([
-    supabase.from("rounds_with_status").select("*").order("sequence"),
+    edition
+      ? supabase
+          .from("rounds_with_status")
+          .select("*")
+          .eq("event_edition_id", edition.id)
+          .order("sequence")
+      : Promise.resolve({ data: [], error: null }),
     supabase.from("stages").select("id, label").order("code"),
   ]);
   return { rounds: rounds ?? [], stages: stages ?? [], error: error?.message ?? null };

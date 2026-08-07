@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { StatusPill, EmptyState } from "@/components/bidwave";
 import { classroomStatus } from "@/lib/round-status-ui";
+import { selectCurrentEdition } from "@/lib/event-edition";
 
 export const metadata: Metadata = { title: "Dashboard" };
 
@@ -31,10 +32,14 @@ export default async function TeamDashboardPage() {
     ? await supabase.from("teams").select("name, campus, status").eq("id", user.id).maybeSingle()
     : { data: null };
 
-  const { data: rounds } = await supabase
-    .from("rounds_with_status")
-    .select("*")
-    .order("sequence", { ascending: true });
+  const { data: edition } = await selectCurrentEdition(supabase);
+  const { data: rounds } = edition
+    ? await supabase
+        .from("rounds_with_status")
+        .select("*")
+        .eq("event_edition_id", edition.id)
+        .order("sequence", { ascending: true })
+    : { data: [] };
 
   // Audit high-priority #13: the announcements table/RPC existed with no
   // team-facing feed anywhere reading it.

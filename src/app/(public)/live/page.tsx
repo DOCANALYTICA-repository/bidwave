@@ -21,11 +21,14 @@ export default async function LivePage() {
 
   const { data: edition } = await selectCurrentEdition(supabase);
 
-  const { data: round } = await supabase
-    .from("rounds_with_status")
-    .select("opens_at")
-    .eq("kind", "auction")
-    .maybeSingle();
+  const { data: round } = edition
+    ? await supabase
+        .from("rounds_with_status")
+        .select("opens_at")
+        .eq("kind", "auction")
+        .eq("event_edition_id", edition.id)
+        .maybeSingle()
+    : { data: null };
 
   if (!edition) {
     return (

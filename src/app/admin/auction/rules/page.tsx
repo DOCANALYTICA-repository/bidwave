@@ -19,7 +19,13 @@ export default async function AdminAuctionRulesPage() {
           .eq("is_active", true)
           .maybeSingle()
       : Promise.resolve({ data: null }),
-    supabase.from("rounds").select("id, title").eq("kind", "auction"),
+    edition
+      ? supabase
+          .from("rounds")
+          .select("id, title")
+          .eq("kind", "auction")
+          .eq("event_edition_id", edition.id)
+      : Promise.resolve({ data: [] }),
   ]);
 
   return (

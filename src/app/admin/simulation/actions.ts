@@ -128,7 +128,13 @@ export async function adminSaveSimulationConfig(
   const { data: edition } = await selectCurrentEdition(admin);
   if (!edition) return { status: "error", formError: "No active event edition found." };
 
-  const { data: round } = await admin.from("rounds").select("id").eq("kind", "simulation").limit(1).maybeSingle();
+  const { data: round } = await admin
+    .from("rounds")
+    .select("id")
+    .eq("kind", "simulation")
+    .eq("event_edition_id", edition.id)
+    .limit(1)
+    .maybeSingle();
 
   // getSimulationData() never ships answer_key to the browser, so the form
   // field is blank unless an admin explicitly used "Reveal answer key" and

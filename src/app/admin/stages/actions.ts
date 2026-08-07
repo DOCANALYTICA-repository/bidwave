@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdmin } from "@/lib/require-role";
+import { selectCurrentEdition } from "@/lib/event-edition";
 
 export type StagesQueryResult = {
   stages: { id: string; code: string; label: string }[];
@@ -17,9 +18,16 @@ export type StagesQueryResult = {
 export async function getStagesData(): Promise<StagesQueryResult> {
   await requireAdmin();
   const supabase = await createClient();
+  const { data: edition } = await selectCurrentEdition(supabase);
   const [{ data: stages }, { data: rounds }, { data: stageRounds }] = await Promise.all([
     supabase.from("stages").select("id, code, label").order("code"),
-    supabase.from("rounds").select("id, title, kind, sequence").order("sequence"),
+    edition
+      ? supabase
+          .from("rounds")
+          .select("id, title, kind, sequence")
+          .eq("event_edition_id", edition.id)
+          .order("sequence")
+      : Promise.resolve({ data: [] }),
     supabase.from("stage_rounds").select("stage_id, round_id, weight"),
   ]);
   return { stages: stages ?? [], rounds: rounds ?? [], stageRounds: stageRounds ?? [] };
