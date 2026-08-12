@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState, useTransition } from "react";
+import { startTransition, useActionState, useEffect, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import {
@@ -64,7 +64,10 @@ export function RegisterWizard({ paymentInstructions }: { paymentInstructions?: 
   // runs, so "busy" spans both phases — the submit button must stay
   // disabled for the upload too, or a slow connection invites a second
   // click that would register the team twice.
-  const [isUploading, startUpload] = useTransition();
+  //
+  // Deliberately a plain flag rather than useTransition: the upload has to
+  // be awaited *outside* any transition (see handleSubmit).
+  const [isUploading, setIsUploading] = useState(false);
   const isPending = isSubmitting || isUploading;
 
   // Server-side rejection (a duplicate the client couldn't have known
@@ -82,11 +85,16 @@ export function RegisterWizard({ paymentInstructions }: { paymentInstructions?: 
   // opposed to mirroring a plain prop.
   useEffect(() => {
     if (state.status === "error") {
+      // The loader runs continuously from the click until either the
+      // redirect unmounts this wizard or the server rejects it here —
+      // clearing it any earlier flashes an enabled submit button between
+      // the upload finishing and the action starting.
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- see comment above
+      setIsUploading(false);
       toast.error(state.formError ?? "Registration failed. Please check the highlighted fields.");
     }
     if (state.status === "error" && state.fieldErrors) {
       const firstField = Object.keys(state.fieldErrors)[0];
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- see comment above
       if (firstField) setStep(stepIndexForField(firstField));
       setErrors((prev) => ({ ...prev, ...state.fieldErrors }));
     }
@@ -172,9 +180,12 @@ export function RegisterWizard({ paymentInstructions }: { paymentInstructions?: 
     // file itself never travels through the Server Action — that route
     // caps out at 1MB (Next) / 4.5MB (Vercel) and failed as an unhandled
     // 500 rather than anything this form could show the user.
-    startUpload(async () => {
+    void (async () => {
+      setIsUploading(true);
+
       const result = await createInvoiceUploadTarget(invoice.name, invoice.type, invoice.size);
       if ("error" in result) {
+        setIsUploading(false);
         setErrors({ invoiceFile: [result.error] });
         setStep(3);
         toast.error(result.error);
@@ -183,6 +194,7 @@ export function RegisterWizard({ paymentInstructions }: { paymentInstructions?: 
 
       const uploadError = await uploadToTarget(result.target, invoice);
       if (uploadError) {
+        setIsUploading(false);
         setErrors({ invoiceFile: [uploadError] });
         setStep(3);
         toast.error(uploadError);
@@ -199,8 +211,16 @@ export function RegisterWizard({ paymentInstructions }: { paymentInstructions?: 
       fd.set("invoiceFileName", invoice.name);
       fd.set("invoiceMimeType", invoice.type);
       fd.set("invoiceSize", String(invoice.size));
-      formAction(fd);
-    });
+
+      // MUST be dispatched synchronously inside a transition. Calling
+      // formAction after an `await` — even inside a useTransition scope,
+      // because the await escapes it — leaves React with an action that
+      // ran "outside of a transition": the server action still executes
+      // and commits (the team really is registered), but React never
+      // processes the reply, so redirect() is swallowed and the submit
+      // loader spins forever on a 303 the client ignored.
+      startTransition(() => formAction(fd));
+    })();
   }
 
   return (

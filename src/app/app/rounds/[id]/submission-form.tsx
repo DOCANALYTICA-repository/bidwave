@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState, useTransition } from "react";
+import { startTransition, useActionState, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { FileDrop } from "@/components/bidwave";
 import { Button } from "@/components/ui/button";
@@ -17,8 +17,9 @@ export function SubmissionForm({ roundId, disabled }: { roundId: string; disable
   const [files, setFiles] = useState<File[]>([]);
   const [state, formAction, isSubmitting] = useActionState(submitRoundFiles, initialState);
   // Files go browser → Storage before the action runs, so "busy" has to
-  // cover the upload too (see lib/uploads/direct-upload.ts).
-  const [isUploading, startUpload] = useTransition();
+  // cover the upload too (see lib/uploads/direct-upload.ts). A plain flag,
+  // not useTransition — the upload must be awaited outside any transition.
+  const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const isPending = isSubmitting || isUploading;
 
@@ -29,35 +30,38 @@ export function SubmissionForm({ roundId, disabled }: { roundId: string; disable
 
   function handleSubmit() {
     setUploadError(null);
-    startUpload(async () => {
+    void (async () => {
+      setIsUploading(true);
+      const fail = (message: string) => {
+        setIsUploading(false);
+        setUploadError(message);
+        toast.error(message);
+      };
+
       const result = await createSubmissionUploadTargets(
         roundId,
         files.map((f) => ({ name: f.name, type: f.type, size: f.size })),
       );
-      if ("error" in result) {
-        setUploadError(result.error);
-        toast.error(result.error);
-        return;
-      }
+      if ("error" in result) return fail(result.error);
 
       const uploaded: { path: string; name: string; type: string }[] = [];
       for (const [index, target] of result.targets.entries()) {
         const file = files[index]!;
         const failure = await uploadToTarget(target, file);
-        if (failure) {
-          const message = `"${file.name}": ${failure}`;
-          setUploadError(message);
-          toast.error(message);
-          return;
-        }
+        if (failure) return fail(`"${file.name}": ${failure}`);
         uploaded.push({ path: target.path, name: file.name, type: file.type });
       }
 
       const fd = new FormData();
       fd.set("roundId", roundId);
       fd.set("files", JSON.stringify(uploaded));
-      formAction(fd);
-    });
+
+      // Synchronous dispatch inside a fresh transition — calling
+      // formAction after an `await` runs the action "outside of a
+      // transition", which leaves isPending stuck and drops the reply.
+      setIsUploading(false);
+      startTransition(() => formAction(fd));
+    })();
   }
 
   return (

@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState, useTransition } from "react";
+import { startTransition, useActionState, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,8 +21,9 @@ export function MaterialForm({ roundId }: { roundId: string }) {
   const [publicRelease, setPublicRelease] = useState(false);
   const [state, formAction, isSaving] = useActionState(adminSaveMaterial, roundActionInitialState);
   // A file material uploads straight to Storage first and only its path
-  // reaches the action (lib/uploads/direct-upload.ts).
-  const [isUploading, startUpload] = useTransition();
+  // reaches the action (lib/uploads/direct-upload.ts). Plain flag, not
+  // useTransition — the upload must be awaited outside any transition.
+  const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isPending = isSaving || isUploading;
@@ -41,22 +42,26 @@ export function MaterialForm({ roundId }: { roundId: string }) {
       return;
     }
 
-    startUpload(async () => {
+    void (async () => {
+      setIsUploading(true);
+      const fail = (message: string) => {
+        setIsUploading(false);
+        setUploadError(message);
+        toast.error(message);
+      };
+
       const result = await createMaterialUploadTarget(roundId, file.name, file.size);
-      if ("error" in result) {
-        setUploadError(result.error);
-        toast.error(result.error);
-        return;
-      }
+      if ("error" in result) return fail(result.error);
+
       const failure = await uploadToTarget(result.target, file);
-      if (failure) {
-        setUploadError(failure);
-        toast.error(failure);
-        return;
-      }
+      if (failure) return fail(failure);
+
       formData.set("filePath", result.target.path);
-      formAction(formData);
-    });
+      // Synchronous dispatch inside a fresh transition — see the same
+      // comment in the register wizard.
+      setIsUploading(false);
+      startTransition(() => formAction(formData));
+    })();
   }
 
   return (
