@@ -66,7 +66,7 @@ test.describe("additional back-button crash coverage", () => {
     // Advance one step — client-side wizard state, no history entry pushed.
     await page.getByLabel("Team name").fill(`Back Button Test ${Date.now()}`);
     await page.getByLabel("Campus").click();
-    await page.getByRole("option", { name: "Bangalore" }).click();
+    await page.getByRole("option", { name: "Central" }).click();
     await page.getByRole("button", { name: "Next", exact: true }).click();
     await expect(page.getByText("Team members")).toBeVisible();
 

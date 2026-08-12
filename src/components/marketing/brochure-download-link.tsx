@@ -3,12 +3,12 @@ import { cn } from "@/lib/utils";
 /**
  * The finalized print brochure, committed to public/ as a static asset
  * (not admin-editable — swapping it needs a redeploy, an accepted
- * tradeoff for a one-time print artifact). See public/bidwave-brochure.pdf.
+ * tradeoff for a one-time print artifact). See public/bidwave-brochure-latest.pdf.
  */
 export function BrochureDownloadLink({ className }: { className?: string }) {
   return (
     <a
-      href="/bidwave-brochure.pdf"
+      href="/bidwave-brochure-latest.pdf"
       download="BIDWAVE-2026-Brochure.pdf"
       target="_blank"
       rel="noopener noreferrer"

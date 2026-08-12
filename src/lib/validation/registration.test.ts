@@ -77,7 +77,7 @@ describe("membersArraySchema", () => {
 describe("registrationDetailsSchema", () => {
   const base = {
     teamName: "Royal Commerce Challengers",
-    campus: "Bangalore" as const,
+    campus: "Central" as const,
     members: validMembers(),
     captainPassword: "supersecret1",
     captainPasswordConfirm: "supersecret1",

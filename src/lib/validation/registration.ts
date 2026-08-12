@@ -6,7 +6,7 @@ import { z } from "zod";
  * client-side validation here is UX only; the server is the authority.
  */
 
-export const CHRIST_CAMPUSES = ["Bangalore", "Delhi NCR", "Pune"] as const;
+export const CHRIST_CAMPUSES = ["Bannerghatta Road", "Central", "Yeshwanthpur"] as const;
 
 const CHRIST_EMAIL_SUFFIX = ".christuniversity.in";
 

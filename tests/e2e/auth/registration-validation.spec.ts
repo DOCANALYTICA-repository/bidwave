@@ -24,7 +24,7 @@ const dummyPdf = Buffer.from("%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF");
 async function fillStep0(page: Page, teamName: string) {
   await page.getByLabel("Team name").fill(teamName);
   await page.getByLabel("Campus").click();
-  await page.getByRole("option", { name: "Bangalore" }).click();
+  await page.getByRole("option", { name: "Central" }).click();
   await page.getByRole("button", { name: "Next", exact: true }).click();
 }
 

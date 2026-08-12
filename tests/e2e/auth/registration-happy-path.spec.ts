@@ -51,7 +51,7 @@ test("a fresh team can register, then log in to its dashboard", async ({ page })
   // native <select>: click the trigger, then click the rendered option).
   await page.getByLabel("Team name").fill(teamName);
   await page.getByLabel("Campus").click();
-  await page.getByRole("option", { name: "Bangalore" }).click();
+  await page.getByRole("option", { name: "Central" }).click();
   await page.getByRole("button", { name: "Next", exact: true }).click();
 
   // Step 2: members — the wizard starts with 3 empty rows already, fill

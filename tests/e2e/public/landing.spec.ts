@@ -69,7 +69,7 @@ test.describe("landing page", () => {
     await expect(footer.getByText(/© 2026 Department of Commerce, CHRIST University\. Bidwave\./)).toBeVisible();
 
     const brochureLink = footer.getByRole("link", { name: "Download brochure" });
-    await expect(brochureLink).toHaveAttribute("href", "/bidwave-brochure.pdf");
+    await expect(brochureLink).toHaveAttribute("href", "/bidwave-brochure-latest.pdf");
     await expect(brochureLink).toHaveAttribute("download", "BIDWAVE-2026-Brochure.pdf");
   });
 });
