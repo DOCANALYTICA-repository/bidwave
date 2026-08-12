@@ -1,9 +1,14 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { registerTeam, type RegisterActionState } from "@/app/register/actions";
+import {
+  createInvoiceUploadTarget,
+  registerTeam,
+  type RegisterActionState,
+} from "@/app/register/actions";
+import { uploadToTarget } from "@/lib/uploads/upload-client";
 import { registrationDetailsSchema, invoiceFileSchema } from "@/lib/validation/registration";
 import { initialWizardValues, STEP_LABELS, type WizardValues } from "@/app/register/wizard-types";
 import { TeamIdentityStep } from "@/app/register/steps/team-identity-step";
@@ -54,7 +59,13 @@ export function RegisterWizard({ paymentInstructions }: { paymentInstructions?: 
   const [step, setStep] = useState(0);
   const [values, setValues] = useState<WizardValues>(initialWizardValues);
   const [errors, setErrors] = useState<Record<string, string[]>>({});
-  const [state, formAction, isPending] = useActionState(registerTeam, registerInitialState);
+  const [state, formAction, isSubmitting] = useActionState(registerTeam, registerInitialState);
+  // The payment proof is uploaded straight to Storage before the action
+  // runs, so "busy" spans both phases — the submit button must stay
+  // disabled for the upload too, or a slow connection invites a second
+  // click that would register the team twice.
+  const [isUploading, startUpload] = useTransition();
+  const isPending = isSubmitting || isUploading;
 
   // Server-side rejection (a duplicate the client couldn't have known
   // about, registration having just closed, etc.) — jump back to whichever
@@ -155,14 +166,41 @@ export function RegisterWizard({ paymentInstructions }: { paymentInstructions?: 
       return;
     }
 
-    const fd = new FormData();
-    fd.set("teamName", values.teamName);
-    fd.set("campus", values.campus);
-    fd.set("members", JSON.stringify(values.members));
-    fd.set("captainPassword", values.captainPassword);
-    fd.set("captainPasswordConfirm", values.captainPasswordConfirm);
-    fd.set("invoiceFile", values.invoiceFile as File);
-    formAction(fd);
+    const invoice = values.invoiceFile as File;
+
+    // Upload first, then submit the form with just the storage path. The
+    // file itself never travels through the Server Action — that route
+    // caps out at 1MB (Next) / 4.5MB (Vercel) and failed as an unhandled
+    // 500 rather than anything this form could show the user.
+    startUpload(async () => {
+      const result = await createInvoiceUploadTarget(invoice.name, invoice.type, invoice.size);
+      if ("error" in result) {
+        setErrors({ invoiceFile: [result.error] });
+        setStep(3);
+        toast.error(result.error);
+        return;
+      }
+
+      const uploadError = await uploadToTarget(result.target, invoice);
+      if (uploadError) {
+        setErrors({ invoiceFile: [uploadError] });
+        setStep(3);
+        toast.error(uploadError);
+        return;
+      }
+
+      const fd = new FormData();
+      fd.set("teamName", values.teamName);
+      fd.set("campus", values.campus);
+      fd.set("members", JSON.stringify(values.members));
+      fd.set("captainPassword", values.captainPassword);
+      fd.set("captainPasswordConfirm", values.captainPasswordConfirm);
+      fd.set("invoicePath", result.target.path);
+      fd.set("invoiceFileName", invoice.name);
+      fd.set("invoiceMimeType", invoice.type);
+      fd.set("invoiceSize", String(invoice.size));
+      formAction(fd);
+    });
   }
 
   return (

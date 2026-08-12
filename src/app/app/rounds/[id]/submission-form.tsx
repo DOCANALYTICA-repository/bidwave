@@ -1,29 +1,68 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { FileDrop } from "@/components/bidwave";
 import { Button } from "@/components/ui/button";
-import { submitRoundFiles, type SubmitRoundFilesState } from "@/app/app/rounds/[id]/actions";
+import {
+  createSubmissionUploadTargets,
+  submitRoundFiles,
+  type SubmitRoundFilesState,
+} from "@/app/app/rounds/[id]/actions";
+import { uploadToTarget } from "@/lib/uploads/upload-client";
 
 const initialState: SubmitRoundFilesState = { status: "idle" };
 
 export function SubmissionForm({ roundId, disabled }: { roundId: string; disabled: boolean }) {
   const [files, setFiles] = useState<File[]>([]);
-  const [state, formAction, isPending] = useActionState(submitRoundFiles, initialState);
+  const [state, formAction, isSubmitting] = useActionState(submitRoundFiles, initialState);
+  // Files go browser → Storage before the action runs, so "busy" has to
+  // cover the upload too (see lib/uploads/direct-upload.ts).
+  const [isUploading, startUpload] = useTransition();
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const isPending = isSubmitting || isUploading;
 
   useEffect(() => {
     if (state.status === "success") toast.success("Submission received.");
     if (state.status === "error" && state.formError) toast.error(state.formError);
   }, [state]);
 
+  function handleSubmit() {
+    setUploadError(null);
+    startUpload(async () => {
+      const result = await createSubmissionUploadTargets(
+        roundId,
+        files.map((f) => ({ name: f.name, type: f.type, size: f.size })),
+      );
+      if ("error" in result) {
+        setUploadError(result.error);
+        toast.error(result.error);
+        return;
+      }
+
+      const uploaded: { path: string; name: string; type: string }[] = [];
+      for (const [index, target] of result.targets.entries()) {
+        const file = files[index]!;
+        const failure = await uploadToTarget(target, file);
+        if (failure) {
+          const message = `"${file.name}": ${failure}`;
+          setUploadError(message);
+          toast.error(message);
+          return;
+        }
+        uploaded.push({ path: target.path, name: file.name, type: file.type });
+      }
+
+      const fd = new FormData();
+      fd.set("roundId", roundId);
+      fd.set("files", JSON.stringify(uploaded));
+      formAction(fd);
+    });
+  }
+
   return (
     <form
-      action={(fd) => {
-        fd.set("roundId", roundId);
-        for (const file of files) fd.append("files", file);
-        formAction(fd);
-      }}
+      action={handleSubmit}
       className="space-y-3"
     >
       <FileDrop
@@ -32,9 +71,9 @@ export function SubmissionForm({ roundId, disabled }: { roundId: string; disable
         accept=".pdf,.pptx,.docx,.xlsx"
         disabled={disabled || isPending}
       />
-      {state.status === "error" && state.formError && (
+      {(uploadError || (state.status === "error" && state.formError)) && (
         <p className="rounded-lg border border-unsold/30 bg-unsold/10 px-3 py-2 text-sm text-unsold">
-          {state.formError}
+          {uploadError ?? state.formError}
         </p>
       )}
       {state.status === "success" && (

@@ -14,6 +14,14 @@ import {
 } from "@/lib/validation/rounds";
 import type { AdminRoundRow } from "@/app/admin/rounds/rounds-table";
 import { selectCurrentEdition } from "@/lib/event-edition";
+import {
+  createUploadTarget,
+  removeUploadedObjects,
+  verifyUploadedObject,
+} from "@/lib/uploads/direct-upload";
+import type { UploadTarget } from "@/lib/uploads/types";
+
+const MAX_MATERIAL_BYTES = 50 * 1024 * 1024;
 
 export type RoundsQueryResult = {
   rounds: AdminRoundRow[];
@@ -143,6 +151,27 @@ export async function adminReopenRound(roundId: string, reason: string): Promise
   return { status: "success" };
 }
 
+/**
+ * Round material files upload browser → Storage directly, for the same
+ * reason registration and submissions do (see lib/uploads/direct-upload.ts):
+ * a Server Action's request body tops out at 1MB, which no real round
+ * brief or dataset fits inside.
+ */
+export async function createMaterialUploadTarget(
+  roundId: string,
+  fileName: string,
+  size: number,
+): Promise<{ target: UploadTarget } | { error: string }> {
+  await requireAdmin();
+  if (!/^[0-9a-f-]{36}$/i.test(roundId)) return { error: "Unknown round." };
+  if (size <= 0 || size > MAX_MATERIAL_BYTES) {
+    return { error: `File must be between 1 byte and ${MAX_MATERIAL_BYTES / (1024 * 1024)}MB.` };
+  }
+  const target = await createUploadTarget("round-materials", roundId, fileName);
+  if (!target) return { error: "Could not start the upload. Please try again." };
+  return { target };
+}
+
 export async function adminSaveMaterial(
   _prev: RoundActionState,
   formData: FormData,
@@ -164,14 +193,14 @@ export async function adminSaveMaterial(
 
   const admin = createAdminClient();
   let storagePath: string | null = null;
-  const file = formData.get("file") as File | null;
-  if (result.data.kind === "file" && file && file.size > 0) {
-    const path = `${result.data.roundId}/${Date.now()}-${file.name}`;
-    const { error: uploadError } = await admin.storage
-      .from("round-materials")
-      .upload(path, file, { contentType: file.type || "application/octet-stream" });
-    if (uploadError) return fail("Upload failed. Please try again.");
-    storagePath = path;
+  const uploadedPath = String(formData.get("filePath") ?? "");
+  if (result.data.kind === "file" && uploadedPath) {
+    const verified = await verifyUploadedObject("round-materials", uploadedPath, {
+      expectedPrefix: result.data.roundId,
+      maxBytes: MAX_MATERIAL_BYTES,
+    });
+    if (!verified) return fail("We couldn't read that file after upload. Please try again.");
+    storagePath = uploadedPath;
   }
 
   const { error } = await admin.rpc("admin_upsert_round_material", {
@@ -186,7 +215,10 @@ export async function adminSaveMaterial(
     p_position: result.data.position,
   });
 
-  if (error) return mapRpcError(error.message);
+  if (error) {
+    if (storagePath) await removeUploadedObjects("round-materials", [storagePath]);
+    return mapRpcError(error.message);
+  }
   revalidatePath(`/admin/rounds/${result.data.roundId}`);
   return { status: "success" };
 }

@@ -1,28 +1,66 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { adminSaveMaterial, type RoundActionState } from "@/app/admin/rounds/actions";
+import {
+  adminSaveMaterial,
+  createMaterialUploadTarget,
+  type RoundActionState,
+} from "@/app/admin/rounds/actions";
+import { uploadToTarget } from "@/lib/uploads/upload-client";
 
 const roundActionInitialState: RoundActionState = { status: "idle" };
 
 export function MaterialForm({ roundId }: { roundId: string }) {
   const [kind, setKind] = useState<"file" | "link" | "text">("text");
   const [publicRelease, setPublicRelease] = useState(false);
-  const [state, formAction, isPending] = useActionState(adminSaveMaterial, roundActionInitialState);
+  const [state, formAction, isSaving] = useActionState(adminSaveMaterial, roundActionInitialState);
+  // A file material uploads straight to Storage first and only its path
+  // reaches the action (lib/uploads/direct-upload.ts).
+  const [isUploading, startUpload] = useTransition();
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const isPending = isSaving || isUploading;
 
   useEffect(() => {
     if (state.status === "success") toast.success("Material added.");
     if (state.status === "error" && state.formError) toast.error(state.formError);
   }, [state]);
 
+  function handleSubmit(formData: FormData) {
+    setUploadError(null);
+    const file = fileInputRef.current?.files?.[0];
+
+    if (kind !== "file" || !file) {
+      formAction(formData);
+      return;
+    }
+
+    startUpload(async () => {
+      const result = await createMaterialUploadTarget(roundId, file.name, file.size);
+      if ("error" in result) {
+        setUploadError(result.error);
+        toast.error(result.error);
+        return;
+      }
+      const failure = await uploadToTarget(result.target, file);
+      if (failure) {
+        setUploadError(failure);
+        toast.error(failure);
+        return;
+      }
+      formData.set("filePath", result.target.path);
+      formAction(formData);
+    });
+  }
+
   return (
-    <form action={formAction} className="space-y-3 rounded-xl border border-border bg-card p-4">
+    <form action={handleSubmit} className="space-y-3 rounded-xl border border-border bg-card p-4">
       <input type="hidden" name="roundId" value={roundId} />
       <input type="hidden" name="kind" value={kind} />
       <input type="hidden" name="position" value={0} />
@@ -61,7 +99,7 @@ export function MaterialForm({ roundId }: { roundId: string }) {
       {kind === "file" && (
         <div className="space-y-1.5">
           <Label htmlFor="material-file">File</Label>
-          <input id="material-file" name="file" type="file" className="text-sm" />
+          <input id="material-file" ref={fileInputRef} type="file" className="text-sm" />
         </div>
       )}
 
@@ -75,8 +113,8 @@ export function MaterialForm({ roundId }: { roundId: string }) {
         Publicly releasable once round is released
       </label>
 
-      {state.status === "error" && state.formError && (
-        <p className="text-xs text-unsold">{state.formError}</p>
+      {(uploadError || (state.status === "error" && state.formError)) && (
+        <p className="text-xs text-unsold">{uploadError ?? state.formError}</p>
       )}
       <Button type="submit" size="sm" disabled={isPending}>
         {isPending ? "Saving…" : "Add material"}

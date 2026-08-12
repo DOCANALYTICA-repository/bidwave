@@ -98,6 +98,29 @@ export const invoiceFileSchema = z
   );
 
 /**
+ * The same three rules as `invoiceFileSchema`, expressed over plain
+ * metadata. The payment proof now goes browser → Storage directly (see
+ * `lib/uploads/direct-upload.ts`), so the server sees a description of the
+ * file when minting the upload target, never a `File` — and re-reads the
+ * object's real size and MIME type from Storage afterward, which is the
+ * check that actually binds.
+ */
+export const invoiceFileMetaSchema = z.object({
+  name: z.string().trim().min(1, "Upload your payment proof").max(255),
+  type: z.enum(INVOICE_ACCEPTED_MIME_TYPES, { message: "Accepted formats: PDF, JPG, PNG" }),
+  size: z
+    .number()
+    .int()
+    .positive("The uploaded file is empty")
+    .max(INVOICE_MAX_BYTES, `File must be ${INVOICE_MAX_BYTES / (1024 * 1024)}MB or smaller`),
+});
+
+/** What the register form submits in place of the file itself. */
+export const invoiceUploadSchema = invoiceFileMetaSchema.extend({
+  path: z.string().trim().min(1, "Upload your payment proof"),
+});
+
+/**
  * Server-side error codes raised by register_team() — see migration
  * 002's `raise exception '[code] message'` convention. Mapped to the form
  * field that should show the error (ERR-01: actionable, field-level,
