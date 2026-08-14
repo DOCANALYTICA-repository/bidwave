@@ -183,8 +183,13 @@ export async function adminSaveMaterial(
     roundId: formData.get("roundId"),
     kind: formData.get("kind"),
     title: formData.get("title"),
-    url: formData.get("url"),
-    body: formData.get("body"),
+    // material-form.tsx renders only the input matching the selected kind,
+    // so the other two fields are absent and formData.get() returns null
+    // (not undefined). materialFormSchema's optional string fields accept
+    // undefined/"" but not null, so every text material was rejected with a
+    // generic "Invalid input." — same failure adminSaveScore hit on `notes`.
+    url: formData.get("url") || undefined,
+    body: formData.get("body") || undefined,
     publicRelease: formData.get("publicRelease") === "on",
     position: formData.get("position") || 0,
   });
