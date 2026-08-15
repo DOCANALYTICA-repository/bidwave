@@ -148,3 +148,82 @@ describe("AT-QZ-05: second-device concurrency block", () => {
     });
   });
 });
+
+describe("editing a question preserves recorded answers", () => {
+  /**
+   * Regression test for real data loss on the live Stat Sprint round.
+   *
+   * admin_upsert_quiz_question()'s edit path used to `delete from
+   * quiz_options` and re-insert with fresh uuids. quiz_answers.option_id
+   * cascades on delete, so correcting a question's WEIGHT after the round
+   * had closed destroyed every recorded answer to it — 132 answers across
+   * 66 teams. Nothing surfaced it: the scores had already been computed and
+   * published, and it only came to light when a recompute produced *lower*
+   * scores than the originals, which a weight increase can never do.
+   *
+   * Fixed in 20260815090000 by upserting options on (question_id, position)
+   * so ids survive. This asserts the property that actually matters: an edit
+   * that doesn't remove any option must not touch quiz_answers.
+   */
+  it("keeps quiz_answers intact when a question's weight is corrected", async () => {
+    await withTx(async (client) => {
+      const editionId = await getActiveEventEditionId(client);
+      const teamId = await createTestTeam(client, { name: `QZ-EDIT ${Date.now()}`, eventEditionId: editionId });
+      const roundId = await createTestRound(client, {
+        eventEditionId: editionId,
+        kind: "quiz",
+        slug: `qz-edit-${Date.now()}`,
+        sequence: 9401,
+        opensAt: new Date(Date.now() - 60_000),
+        closesAt: new Date(Date.now() + 60 * 60_000),
+      });
+
+      const q = await createQuizQuestion(client, roundId, editionId, 0, 0.5, 0);
+
+      const { rows: startRows } = await client.query(`select public.start_quiz_attempt($1, $2) as result`, [
+        teamId,
+        roundId,
+      ]);
+      const attemptId = startRows[0].result.attempt_id;
+
+      await client.query(
+        `insert into public.quiz_answers (attempt_id, question_id, option_id) values ($1, $2, $3)`,
+        [attemptId, q.questionId, q.optionIds[0]],
+      );
+
+      // Re-send the question unchanged except for its weight — exactly what
+      // the admin quiz builder submits when fixing a weighting error.
+      const options = JSON.stringify(
+        [0, 1, 2, 3].map((i) => ({ label: `Option ${i}`, is_correct: i === 0 })),
+      );
+      await client.query(
+        `select public.admin_upsert_quiz_question($1, $2, 0, 'Question 0', 60, 1.0, true, $3::jsonb)`,
+        [q.questionId, roundId, options],
+      );
+
+      const { rows: answers } = await client.query(
+        `select option_id from public.quiz_answers where attempt_id = $1 and question_id = $2`,
+        [attemptId, q.questionId],
+      );
+      expect(answers).toHaveLength(1);
+      // The option id itself must survive, not just the row count — that is
+      // what keeps the answer pointing at the right choice.
+      expect(answers[0].option_id).toBe(q.optionIds[0]);
+
+      const { rows: weightRows } = await client.query(
+        `select weight from public.quiz_questions where id = $1`,
+        [q.questionId],
+      );
+      expect(Number(weightRows[0].weight)).toBe(1);
+
+      // And the corrected weight is what scoring now uses.
+      const { rows: submitRows } = await client.query(
+        `select public.submit_quiz_attempt($1, $2, 'completed', (select session_token from public.quiz_attempts where id = $3)) as result`,
+        [teamId, roundId, attemptId],
+      );
+      expect(Number(submitRows[0].result.raw_score)).toBe(1);
+      expect(Number(submitRows[0].result.max_score)).toBe(1);
+      expect(Number(submitRows[0].result.correct_count)).toBe(1);
+    });
+  });
+});
