@@ -24,6 +24,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 ["/admin/activity", "Activity"],
                 ["/admin/settings", "Settings"],
                 ["/admin/exports", "Exports"],
+                ["/admin/preview", "Preview"],
               ].map(([href, label]) => (
                 <AdminNavLink key={href} href={href} label={label} />
               ))}

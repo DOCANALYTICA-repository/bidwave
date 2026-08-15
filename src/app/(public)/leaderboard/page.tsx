@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
+import { selectCurrentEdition } from "@/lib/event-edition";
 import { EmptyState } from "@/components/bidwave";
 
 export const metadata: Metadata = { title: "Leaderboard" };
@@ -17,11 +18,21 @@ type Entry = { rank: number; team_name: string; score: number };
  */
 export default async function PublicLeaderboardPage() {
   const supabase = await createClient();
-  const { data: snapshots } = await supabase
-    .from("leaderboard_snapshots")
-    .select("kind, published_at, leaderboard_snapshot_entries(rank, team_name, score)")
-    .in("kind", ["top_15", "final_top_10"])
-    .is("hidden_at", null);
+  const { data: edition } = await selectCurrentEdition(supabase);
+
+  // Edition-scoped. admin_publish_leaderboard only auto-hides prior
+  // snapshots of the same kind *within its own edition*, and the RLS policy
+  // only checks hidden_at — so a snapshot published against any other
+  // edition stays live here too, and the find() below would pick between
+  // them by whatever order PostgREST happened to return.
+  const { data: snapshots } = edition
+    ? await supabase
+        .from("leaderboard_snapshots")
+        .select("kind, published_at, leaderboard_snapshot_entries(rank, team_name, score)")
+        .eq("event_edition_id", edition.id)
+        .in("kind", ["top_15", "final_top_10"])
+        .is("hidden_at", null)
+    : { data: null };
 
   const topFifteen = snapshots?.find((s) => s.kind === "top_15");
   const finalTopTen = snapshots?.find((s) => s.kind === "final_top_10");

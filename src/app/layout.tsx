@@ -9,6 +9,7 @@ import {
 import "./globals.css";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
+import { PreviewBanner } from "@/components/bidwave/preview-banner";
 
 // Display — brochure-faithful stand-in for the commercial "Zuume Rough Bold".
 // Swapping in a licensed font later is a one-file change (see docs/DESIGN_SYSTEM.md).
@@ -68,6 +69,9 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col bg-background text-foreground font-sans">
         <TooltipProvider delay={200}>
+          {/* Async server component rendered as a child, so the root layout
+              itself stays synchronous. Renders null unless preview is on. */}
+          <PreviewBanner />
           {children}
           <Toaster position="top-right" />
         </TooltipProvider>

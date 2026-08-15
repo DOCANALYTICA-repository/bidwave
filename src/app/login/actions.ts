@@ -12,17 +12,24 @@ export type LoginActionState = {
   formError?: string;
 };
 
+const TOO_MANY_ATTEMPTS = "Too many attempts. Please wait a few minutes and try again.";
+
 export async function login(
   _prevState: LoginActionState,
   formData: FormData,
 ): Promise<LoginActionState> {
   const ip = await clientIpKey();
-  // Generous — Supabase's own GoTrue rate limiting (config.toml
-  // auth.rate_limit.sign_in_sign_ups) already covers the /token endpoint;
-  // this is a second, coarser layer since we also log the attempt below.
-  const withinLimit = await checkRateLimit("login", ip, 20, 900);
-  if (!withinLimit) {
-    return { status: "error", formError: "Too many attempts. Please wait a few minutes and try again." };
+
+  // Two tiers, deliberately. The venue puts 80+ captains behind one NAT, so
+  // a single IP-keyed bucket meant the 21st sign-in of the morning locked
+  // out everyone on that network. This coarse ceiling exists only to stop an
+  // automated stuffing run (thousands of attempts), not to pace humans —
+  // Supabase's own GoTrue limiting (config.toml auth.rate_limit
+  // .sign_in_sign_ups) still covers the /token endpoint underneath.
+  // Checked before parsing so a malformed flood stays cheap to reject.
+  const withinIpCeiling = await checkRateLimit("login_ip", ip, 600, 900);
+  if (!withinIpCeiling) {
+    return { status: "error", formError: TOO_MANY_ATTEMPTS };
   }
 
   const result = loginSchema.safeParse({
@@ -31,6 +38,17 @@ export async function login(
   });
   if (!result.success) {
     return { status: "error", formError: "Enter a valid email and password." };
+  }
+
+  // The bucket that actually deters credential stuffing: per account, per
+  // IP. loginSchema already trims and lowercases the email, so the key is
+  // normalised for free and `Foo@X` can't open a second bucket. Keying on
+  // the email rather than the IP alone is also strictly better against
+  // lockout — an attacker fills only their own bucket and can't shut a
+  // captain out from a different address.
+  const withinAccountLimit = await checkRateLimit("login", `${result.data.email}:${ip}`, 10, 900);
+  if (!withinAccountLimit) {
+    return { status: "error", formError: TOO_MANY_ATTEMPTS };
   }
 
   const admin = createAdminClient();

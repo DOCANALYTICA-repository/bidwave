@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdmin } from "@/lib/require-role";
 import { parseRpcErrorCode, parseRpcErrorDetail } from "@/lib/validation/registration";
+import { AUCTION_BLOCKED_IN_PREVIEW, isAuctionWriteBlocked } from "@/lib/preview-mode";
 
 export type SaleActionState = {
   status: "idle" | "error" | "success";
@@ -16,6 +17,10 @@ export async function recordSale(
   formData: FormData,
 ): Promise<SaleActionState> {
   const adminUser = await requireAdmin();
+  // Preview mode must never produce a sale — see isAuctionWriteBlocked().
+  if (await isAuctionWriteBlocked()) {
+    return { status: "error", formError: AUCTION_BLOCKED_IN_PREVIEW };
+  }
   const admin = createAdminClient();
 
   const { error } = await admin.rpc("record_sale", {
@@ -43,6 +48,7 @@ export async function reverseSale(
   expectedPlayerUpdatedAt: string,
 ): Promise<{ error?: string }> {
   const adminUser = await requireAdmin();
+  if (await isAuctionWriteBlocked()) return { error: AUCTION_BLOCKED_IN_PREVIEW };
   const admin = createAdminClient();
   const { error } = await admin.rpc("reverse_sale", {
     p_sale_id: saleId,
@@ -57,6 +63,7 @@ export async function reverseSale(
 
 export async function setActivePlayer(playerId: string, expectedUpdatedAt: string): Promise<{ error?: string }> {
   const adminUser = await requireAdmin();
+  if (await isAuctionWriteBlocked()) return { error: AUCTION_BLOCKED_IN_PREVIEW };
   const admin = createAdminClient();
   const { error } = await admin.rpc("set_active_player", {
     p_player_id: playerId,
@@ -70,6 +77,7 @@ export async function setActivePlayer(playerId: string, expectedUpdatedAt: strin
 
 export async function markPlayerUnsold(playerId: string, expectedUpdatedAt: string): Promise<{ error?: string }> {
   const adminUser = await requireAdmin();
+  if (await isAuctionWriteBlocked()) return { error: AUCTION_BLOCKED_IN_PREVIEW };
   const admin = createAdminClient();
   const { error } = await admin.rpc("mark_player_unsold", {
     p_player_id: playerId,
@@ -87,6 +95,7 @@ export async function recallPlayer(
   expectedUpdatedAt: string,
 ): Promise<{ error?: string }> {
   const adminUser = await requireAdmin();
+  if (await isAuctionWriteBlocked()) return { error: AUCTION_BLOCKED_IN_PREVIEW };
   const admin = createAdminClient();
   const { error } = await admin.rpc("recall_player", {
     p_player_id: playerId,
@@ -101,6 +110,7 @@ export async function recallPlayer(
 
 export async function endAuction(eventEditionId: string): Promise<{ error?: string }> {
   const adminUser = await requireAdmin();
+  if (await isAuctionWriteBlocked()) return { error: AUCTION_BLOCKED_IN_PREVIEW };
   const admin = createAdminClient();
   const { error } = await admin.rpc("end_auction", {
     p_event_edition_id: eventEditionId,

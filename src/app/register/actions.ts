@@ -13,7 +13,7 @@ import {
   parseRpcErrorCode,
   REGISTRATION_ERROR_FIELD,
 } from "@/lib/validation/registration";
-import { selectCurrentEdition } from "@/lib/event-edition";
+import { selectLiveEdition } from "@/lib/event-edition";
 import {
   createUploadTarget,
   moveUploadedObject,
@@ -151,7 +151,7 @@ export async function registerTeam(
   };
 
   const serverClient = await createClient();
-  const { data: edition, error: editionError } = await selectCurrentEdition(serverClient);
+  const { data: edition, error: editionError } = await selectLiveEdition(serverClient);
 
   if (editionError || !edition) {
     return discardStaged({

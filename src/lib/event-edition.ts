@@ -1,6 +1,7 @@
 import "server-only";
 import type { SupabaseClient, PostgrestSingleResponse } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/types";
+import { previewEditionSlug } from "@/lib/preview-mode";
 
 /**
  * Every page/action resolves "the current event edition" through here
@@ -30,7 +31,36 @@ export async function selectCurrentEdition<T = { id: string }>(
   client: SupabaseClient<Database>,
   columns = "id",
 ): Promise<PostgrestSingleResponse<T>> {
-  const slug = process.env.NODE_ENV !== "production" ? process.env.BIDWAVE_EVENT_EDITION_SLUG : undefined;
+  // Two independent overrides. The env-var guard is evaluated first and on
+  // its own, so "the env path is dev-only" stays structurally true rather
+  // than being a promise made in a comment:
+  //   - env var: global and blunt, so it remains dev-only exactly as before,
+  //     and an explicit local override beats a stale cookie.
+  //   - preview: a signed, self-expiring, per-browser cookie an admin mints
+  //     from /admin/preview. Works in production on purpose — that is the
+  //     entire point of it (see src/lib/preview-mode.ts).
+  const devSlug =
+    process.env.NODE_ENV !== "production" ? process.env.BIDWAVE_EVENT_EDITION_SLUG : undefined;
+  const slug = devSlug ?? (await previewEditionSlug());
+
+  const query = (client.from("event_editions") as any).select(columns); // eslint-disable-line @typescript-eslint/no-explicit-any
+  return slug ? query.eq("slug", slug).maybeSingle() : query.eq("is_active", true).maybeSingle();
+}
+
+/**
+ * The live edition, ignoring preview mode entirely.
+ *
+ * Used by registration only. Every other flow is safe to rehearse because a
+ * mis-scoped write just lands in the test edition, but registration is public
+ * and a mis-scoped write silently loses a *real student's* entry — and
+ * rehearsing registration was never a goal of preview mode.
+ */
+export async function selectLiveEdition<T = { id: string }>(
+  client: SupabaseClient<Database>,
+  columns = "id",
+): Promise<PostgrestSingleResponse<T>> {
+  const slug =
+    process.env.NODE_ENV !== "production" ? process.env.BIDWAVE_EVENT_EDITION_SLUG : undefined;
   const query = (client.from("event_editions") as any).select(columns); // eslint-disable-line @typescript-eslint/no-explicit-any
   return slug ? query.eq("slug", slug).maybeSingle() : query.eq("is_active", true).maybeSingle();
 }
