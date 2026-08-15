@@ -81,4 +81,11 @@ export const ROUND_ERROR_FIELD: Record<string, string> = {
   invalid_material: "form",
   invalid_criterion: "form",
   invalid_decision: "form",
+  // 20260814050000 — quiz re-attempt round.
+  not_eligible: "form",
+  resume_not_allowed: "form",
+  eligibility_locked: "form",
+  invalid_supersede: "form",
+  invalid_policy: "form",
+  invalid_strike_kind: "form",
 };

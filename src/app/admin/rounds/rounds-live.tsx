@@ -30,7 +30,11 @@ export function RoundsLive({
           Could not load rounds: {data.error}
         </p>
       )}
-      <RoundsTable rounds={data.rounds} stages={data.stages} />
+      <RoundsTable
+        rounds={data.rounds}
+        stages={data.stages}
+        unpublishedByRound={data.unpublishedByRound}
+      />
     </div>
   );
 }

@@ -2,11 +2,15 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
-import { StatusPill, BackLink } from "@/components/bidwave";
+import { StatusPill, BackLink, ScoreSummary } from "@/components/bidwave";
 import { classroomStatus } from "@/lib/round-status-ui";
 import { SubmissionForm } from "@/app/app/rounds/[id]/submission-form";
 
 export const metadata: Metadata = { title: "Round" };
+
+// See the matching note in src/app/app/page.tsx: a freshly published score
+// must not be hidden behind a cached RSC payload.
+export const dynamic = "force-dynamic";
 
 // Explicit locale/options for consistent display regardless of the
 // server's locale config — same convention as activity-log.tsx and
@@ -47,12 +51,26 @@ export default async function TeamRoundPage({ params }: { params: Promise<{ id: 
       supabase.rpc("can_team_submit", { p_round_id: id, p_team_id: user.id }),
       supabase
         .from("quiz_attempts")
-        .select("status")
+        .select("status, correct_count, question_count, percent")
         .eq("round_id", id)
         .eq("team_id", user.id)
         .neq("status", "archived")
         .maybeSingle(),
     ]);
+
+  // Invite-only rounds (the Round 1 re-attempt) are not reachable by URL for
+  // a team that isn't on the allowlist. Cosmetic on top of
+  // start_quiz_attempt's [not_eligible] raise, but it keeps a shared link
+  // from looking like a round that's merely broken.
+  if (round.is_invite_only) {
+    const { data: eligible } = await supabase
+      .from("round_eligible_teams")
+      .select("round_id")
+      .eq("round_id", id)
+      .eq("team_id", user.id)
+      .maybeSingle();
+    if (!eligible) notFound();
+  }
 
   // Quiz rounds track completion via quiz_attempts, not submissions.
   const submissionStatus =
@@ -236,10 +254,14 @@ export default async function TeamRoundPage({ params }: { params: Promise<{ id: 
           <h2 className="font-heading text-sm font-semibold uppercase tracking-wide text-ink-2">
             Your score
           </h2>
-          <p className="font-mono text-xl tabular-nums">
-            {score.total}
-            {score.max_total ? ` / ${score.max_total}` : ""}
-          </p>
+          <ScoreSummary
+            total={score.total}
+            maxTotal={score.max_total}
+            source={score.source}
+            correctCount={quizAttempt?.correct_count ?? null}
+            questionCount={quizAttempt?.question_count ?? null}
+            percent={quizAttempt?.percent ?? null}
+          />
           {criteria && criteria.length > 0 && criterionValueById.size > 0 && (
             <ul className="space-y-1 border-t border-border pt-2 text-sm text-ink-2">
               {criteria.map((c) => (

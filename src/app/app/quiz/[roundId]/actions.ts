@@ -115,3 +115,77 @@ export async function submitQuizAttemptAction(roundId: string, reason: string, s
 
   return { data };
 }
+
+/**
+ * Report leaving the quiz (tab switch / minimise / navigate away) under the
+ * lenient exit policy. The SERVER decides what that costs: a warning, or the
+ * end of the attempt once the round's strike limit is reached. The client
+ * never makes that call — a client-side counter would reset on the refresh
+ * that this policy now deliberately allows.
+ */
+export async function recordQuizStrikeAction(roundId: string, sessionToken: string, kind: string) {
+  const user = await requireTeamUser();
+  // Same order of magnitude as quiz_submit: one physical exit can raise two
+  // signals, and record_quiz_strike debounces them server-side anyway. This
+  // only stops scripted hammering.
+  const ok = await checkRateLimit("quiz_strike", `${user.id}:${roundId}`, 30, 60);
+  if (!ok) return { error: "Too many requests — please wait a moment." };
+
+  const admin = createAdminClient();
+  const { data, error } = await admin.rpc("record_quiz_strike", {
+    p_team_id: user.id,
+    p_round_id: roundId,
+    p_session_token: sessionToken,
+    p_kind: kind,
+  });
+  if (error) {
+    const parsed = parseRpcErrorCode(error.message);
+    if (!parsed)
+      logUnmappedRpcError("record_quiz_strike", { team_id: user.id, round_id: roundId, kind }, error.message);
+    return { error: parsed?.message ?? "Could not record the event." };
+  }
+  return { data };
+}
+
+/** Dismiss the blocking warning overlay (stamps warning_ack_at). */
+export async function ackQuizWarningAction(roundId: string, sessionToken: string) {
+  const user = await requireTeamUser();
+  const admin = createAdminClient();
+  const { error } = await admin.rpc("ack_quiz_warning", {
+    p_team_id: user.id,
+    p_round_id: roundId,
+    p_session_token: sessionToken,
+  });
+  if (error) {
+    const parsed = parseRpcErrorCode(error.message);
+    if (!parsed) logUnmappedRpcError("ack_quiz_warning", { team_id: user.id, round_id: roundId }, error.message);
+    return { error: parsed?.message ?? "Could not acknowledge the warning." };
+  }
+  return { ok: true };
+}
+
+/**
+ * Reclaim an in-progress attempt after a refresh, a crash, or a device
+ * swap. Mints a FRESH session token rather than handing the stored one
+ * back, so two devices can still never poll the same attempt (AT-QZ-05) —
+ * the stale tab gets [session_replaced] on its next poll, which the runner
+ * now presents as a real screen with a "continue on this device" button
+ * instead of a frozen error.
+ */
+export async function resumeQuizAttemptAction(roundId: string) {
+  const user = await requireTeamUser();
+  const ok = await checkRateLimit("quiz_resume", `${user.id}:${roundId}`, 20, 300);
+  if (!ok) return { error: "Too many reconnect attempts — please wait a moment." };
+
+  const admin = createAdminClient();
+  const { data, error } = await admin.rpc("resume_quiz_attempt", {
+    p_team_id: user.id,
+    p_round_id: roundId,
+  });
+  if (error) {
+    const parsed = parseRpcErrorCode(error.message);
+    if (!parsed) logUnmappedRpcError("resume_quiz_attempt", { team_id: user.id, round_id: roundId }, error.message);
+    return { error: parsed?.message ?? "Could not resume your attempt." };
+  }
+  return { data: data as { status: string; attempt_id: string; session_token?: string } };
+}

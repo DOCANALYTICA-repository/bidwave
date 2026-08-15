@@ -40,9 +40,12 @@ function statusKey(status: string): "upcoming" | "open-eligible" | "closed" | "s
 export function RoundsTable({
   rounds,
   stages,
+  unpublishedByRound = {},
 }: {
   rounds: AdminRoundRow[];
   stages: { id: string; label: string }[];
+  /** round_id -> scored-but-unpublished score rows; see getRoundsData. */
+  unpublishedByRound?: Record<string, number>;
 }) {
   const [selected, setSelected] = useState<AdminRoundRow | "new" | null>(null);
   const [reopening, setReopening] = useState<AdminRoundRow | null>(null);
@@ -76,7 +79,26 @@ export function RoundsTable({
           },
           { key: "kind", header: "Kind", render: (r) => r.kind },
           { key: "sequence", header: "#", render: (r) => r.sequence },
-          { key: "status", header: "Status", render: (r) => <StatusPill status={statusKey(r.status)} label={r.status} /> },
+          {
+            key: "status",
+            header: "Status",
+            render: (r) => (
+              <div className="flex flex-col items-start gap-1">
+                <StatusPill status={statusKey(r.status)} label={r.status} />
+                {/* Publishing scores is a one-shot action over the rows that
+                    exist when it runs — anything scored afterwards stays
+                    invisible to the team until it's run again. */}
+                {(unpublishedByRound[r.id] ?? 0) > 0 && (
+                  <span
+                    className="rounded border border-gold/40 bg-gold/10 px-1.5 py-0.5 text-[11px] text-gold"
+                    title="These teams are scored but cannot see their score. Publish scores again to release them."
+                  >
+                    {unpublishedByRound[r.id]} unpublished
+                  </span>
+                )}
+              </div>
+            ),
+          },
           {
             key: "actions",
             header: "Actions",

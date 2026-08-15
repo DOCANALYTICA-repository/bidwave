@@ -81,8 +81,14 @@ async function main() {
 
   console.log("Seeding one demo admin account...");
   const adminEmail = "admin@test.bidwave.local";
-  const { data: existingAdminUsers } = await admin.auth.admin.listUsers();
-  let adminUserId = existingAdminUsers?.users?.find((u) => u.email === adminEmail)?.id;
+  // Looked up through pg, not admin.auth.admin.listUsers(): that call
+  // paginates at 50 users per page and only ever fetched page one, so once
+  // the project passed 50 auth users the existing demo admin stopped being
+  // found and the createUser below failed the whole seed with "A user with
+  // this email address has already been registered" — taking every e2e run
+  // with it. auth.users is the authority and needs no paging.
+  const { rows: adminRows } = await pg.query("select id from auth.users where email = $1", [adminEmail]);
+  let adminUserId = adminRows[0]?.id;
   if (!adminUserId) {
     const { data: adminUser, error: adminError } = await admin.auth.admin.createUser({
       email: adminEmail,

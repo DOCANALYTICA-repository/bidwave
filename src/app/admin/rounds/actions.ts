@@ -26,6 +26,14 @@ const MAX_MATERIAL_BYTES = 50 * 1024 * 1024;
 export type RoundsQueryResult = {
   rounds: AdminRoundRow[];
   stages: { id: string; label: string }[];
+  /**
+   * round_id -> count of scored-but-unpublished score rows. Publishing is a
+   * one-shot action over the rows that exist at the time it runs, so any
+   * team submitting afterwards is scored in the admin view but sees nothing
+   * on their own dashboard. Surfacing the count is what makes that gap
+   * visible without publishing automatically.
+   */
+  unpublishedByRound: Record<string, number>;
   error: string | null;
 };
 
@@ -46,7 +54,26 @@ export async function getRoundsData(): Promise<RoundsQueryResult> {
       : Promise.resolve({ data: [], error: null }),
     supabase.from("stages").select("id, label").order("code"),
   ]);
-  return { rounds: rounds ?? [], stages: stages ?? [], error: error?.message ?? null };
+
+  const roundIds = (rounds ?? []).map((r) => r.id);
+  const { data: unpublished } = roundIds.length
+    ? await supabase
+        .from("scores")
+        .select("round_id")
+        .in("round_id", roundIds)
+        .eq("published", false)
+    : { data: null };
+  const unpublishedByRound: Record<string, number> = {};
+  for (const row of unpublished ?? []) {
+    unpublishedByRound[row.round_id] = (unpublishedByRound[row.round_id] ?? 0) + 1;
+  }
+
+  return {
+    rounds: rounds ?? [],
+    stages: stages ?? [],
+    unpublishedByRound,
+    error: error?.message ?? null,
+  };
 }
 
 export type RoundActionState = {
@@ -337,6 +364,113 @@ export async function adminPublishScoresForRound(roundId: string): Promise<void>
   const admin = createAdminClient();
   await admin.rpc("admin_publish_scores_for_round", { p_round_id: roundId });
   revalidatePath(`/admin/rounds/${roundId}`);
+}
+
+/**
+ * The four re-attempt fields (supersede target, invite-only, quiz exit
+ * policy, strike limit) live on their own setter rather than being folded
+ * into admin_upsert_round. Adding parameters there — even with defaults —
+ * creates a function overload, which is precisely the bug class
+ * 20260807090000_fix_admin_overloads_and_quiz_position_lock.sql exists to
+ * fix; avoiding it would mean a drop+recreate+re-grant on an RPC sitting
+ * behind the live rounds console.
+ */
+export async function adminSetRoundPolicy(
+  _prev: RoundActionState,
+  formData: FormData,
+): Promise<RoundActionState> {
+  const adminUser = await requireAdmin();
+
+  const roundId = formData.get("roundId") as string;
+  const supersedes = (formData.get("supersedesRoundId") as string) || null;
+  const exitPolicy = (formData.get("quizExitPolicy") as string) || "strict";
+  const strikeLimit = Number(formData.get("quizStrikeLimit") ?? 1);
+
+  if (!roundId) return fail("Missing round.");
+  if (!Number.isInteger(strikeLimit) || strikeLimit < 1 || strikeLimit > 5) {
+    return fail("Strike limit must be a whole number between 1 and 5.", "quizStrikeLimit");
+  }
+
+  const admin = createAdminClient();
+  const { error } = await admin.rpc("admin_set_round_policy", {
+    p_round_id: roundId,
+    p_supersedes_round_id: supersedes,
+    p_is_invite_only: formData.get("isInviteOnly") === "on",
+    p_quiz_exit_policy: exitPolicy,
+    p_quiz_strike_limit: strikeLimit,
+    p_admin_id: adminUser.id,
+  });
+  if (error) return mapRpcError(error.message);
+
+  revalidatePath(`/admin/rounds/${roundId}`);
+  revalidatePath("/admin/rounds");
+  return { status: "success" };
+}
+
+/**
+ * Replaces the whole allowlist. Deliberately delete-then-insert server-side
+ * (admin_set_round_eligibility), which is why the picker disables bulk save
+ * once the round is open — two admins saving concurrently would each clobber
+ * the other's additions.
+ */
+export async function adminSetRoundEligibility(
+  roundId: string,
+  teamIds: string[],
+): Promise<{ ok: true; count: number } | { ok: false; error: string }> {
+  const adminUser = await requireAdmin();
+  const admin = createAdminClient();
+  const { data, error } = await admin.rpc("admin_set_round_eligibility", {
+    p_round_id: roundId,
+    p_team_ids: teamIds,
+    p_admin_id: adminUser.id,
+    p_reason: null,
+  });
+  if (error) {
+    const parsed = parseRpcErrorCode(error.message);
+    return { ok: false, error: parsed?.message ?? "Could not save the eligibility list." };
+  }
+  revalidatePath(`/admin/rounds/${roundId}`);
+  return { ok: true, count: (data as number) ?? teamIds.length };
+}
+
+/** Single-team add — the one that gets used mid-round for a walk-up. */
+export async function adminAddRoundEligibleTeam(
+  roundId: string,
+  teamId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const adminUser = await requireAdmin();
+  const admin = createAdminClient();
+  const { error } = await admin.rpc("admin_add_round_eligible_team", {
+    p_round_id: roundId,
+    p_team_id: teamId,
+    p_reason: null,
+    p_admin_id: adminUser.id,
+  });
+  if (error) {
+    const parsed = parseRpcErrorCode(error.message);
+    return { ok: false, error: parsed?.message ?? "Could not add the team." };
+  }
+  revalidatePath(`/admin/rounds/${roundId}`);
+  return { ok: true };
+}
+
+export async function adminRemoveRoundEligibleTeam(
+  roundId: string,
+  teamId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const adminUser = await requireAdmin();
+  const admin = createAdminClient();
+  const { error } = await admin.rpc("admin_remove_round_eligible_team", {
+    p_round_id: roundId,
+    p_team_id: teamId,
+    p_admin_id: adminUser.id,
+  });
+  if (error) {
+    const parsed = parseRpcErrorCode(error.message);
+    return { ok: false, error: parsed?.message ?? "Could not remove the team." };
+  }
+  revalidatePath(`/admin/rounds/${roundId}`);
+  return { ok: true };
 }
 
 export async function getSubmissionFileUrl(storagePath: string): Promise<string | null> {

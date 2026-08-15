@@ -2,11 +2,17 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { StatusPill, EmptyState } from "@/components/bidwave";
+import { StatusPill, EmptyState, ScoreSummary } from "@/components/bidwave";
 import { classroomStatus } from "@/lib/round-status-ui";
 import { selectCurrentEdition } from "@/lib/event-edition";
 
 export const metadata: Metadata = { title: "Dashboard" };
+
+// Scores are published by an explicit admin action, and a team refreshing
+// after that action must see the change — with the default caching this
+// page's RSC payload can be served from the client router cache long after
+// the score landed, which reads to the team as "my score is wrong".
+export const dynamic = "force-dynamic";
 
 // Explicit locale/options for consistent display regardless of the
 // server's locale config — same convention as activity-log.tsx and
@@ -43,35 +49,56 @@ export default async function TeamDashboardPage() {
 
   // Audit high-priority #13: the announcements table/RPC existed with no
   // team-facing feed anywhere reading it.
-  const { data: announcements } = await supabase
-    .from("announcements")
-    .select("id, message, created_at")
-    .eq("visibility", "published")
-    .in("audience", ["all", "team"])
-    .order("created_at", { ascending: false })
-    .limit(5);
+  // Edition-scoped: RLS only requires published + audience, so without this
+  // filter an announcement from any other edition (a rehearsal one, say)
+  // would show on every real team's dashboard.
+  const { data: announcements } = edition
+    ? await supabase
+        .from("announcements")
+        .select("id, message, created_at")
+        .eq("event_edition_id", edition.id)
+        .eq("visibility", "published")
+        .in("audience", ["all", "team"])
+        .order("created_at", { ascending: false })
+        .limit(5)
+    : { data: null };
 
   const teamId = user?.id;
   const [{ data: submissions }, { data: scores }, { data: qualifications }, { data: quizAttempts }] = teamId
     ? await Promise.all([
         supabase.from("submissions").select("round_id, status, submitted_at").eq("team_id", teamId),
-        supabase.from("scores").select("round_id, total, max_total, published").eq("team_id", teamId),
+        supabase
+          .from("scores")
+          .select("round_id, total, max_total, source, published")
+          .eq("team_id", teamId),
         supabase.from("qualifications").select("stage_id, rank, decision").eq("team_id", teamId),
-        supabase.from("quiz_attempts").select("round_id, status").eq("team_id", teamId).neq("status", "archived"),
+        // correct_count/question_count/percent are what make the published
+        // score legible — see ScoreSummary.
+        supabase
+          .from("quiz_attempts")
+          .select("round_id, status, correct_count, question_count, percent")
+          .eq("team_id", teamId)
+          .neq("status", "archived"),
       ])
     : [{ data: null }, { data: null }, { data: null }, { data: null }];
 
   // C2: the "More" section's simulation link should only appear once an
   // admin has revealed it — otherwise every team saw a live entry point to
   // a page that just says "not visible yet" via notFound().
+  // Scoped to this edition, matching the C3 fix already applied to the
+  // simulation page itself — "is there *any* visible config anywhere" meant
+  // revealing another edition's simulation lit the link up for every team here.
   const admin = createAdminClient();
-  const { data: simulationConfig } = await admin
-    .from("simulation_config")
-    .select("visible_at")
-    .not("visible_at", "is", null)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  const { data: simulationConfig } = edition
+    ? await admin
+        .from("simulation_config")
+        .select("visible_at")
+        .eq("event_edition_id", edition.id)
+        .not("visible_at", "is", null)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle()
+    : { data: null };
   const simulationVisible = !!simulationConfig;
 
   const submissionByRound = new Map((submissions ?? []).map((s) => [s.round_id, s]));
@@ -85,11 +112,22 @@ export default async function TeamDashboardPage() {
       { status: (a.status === "submitted" ? "submitted" : "not_submitted") as "submitted" | "not_submitted" },
     ]),
   );
+  const quizDetailByRound = new Map((quizAttempts ?? []).map((a) => [a.round_id, a]));
+
+  // Invite-only rounds (the Round 1 re-attempt) must not appear for teams
+  // that aren't on the allowlist — otherwise all 94 teams see a re-sit they
+  // can't take. Cosmetic only: start_quiz_attempt's [not_eligible] raise is
+  // the actual gate.
+  const { data: eligibleRows } = teamId
+    ? await supabase.from("round_eligible_teams").select("round_id").eq("team_id", teamId)
+    : { data: null };
+  const eligibleRoundIds = new Set((eligibleRows ?? []).map((r) => r.round_id));
+  const visibleRounds = (rounds ?? []).filter((r) => !r.is_invite_only || eligibleRoundIds.has(r.id));
 
   const eligibility: Record<string, boolean> = {};
-  if (teamId && rounds) {
+  if (teamId) {
     await Promise.all(
-      rounds.map(async (r) => {
+      visibleRounds.map(async (r) => {
         const { data } = await supabase.rpc("can_team_submit", {
           p_round_id: r.id,
           p_team_id: teamId,
@@ -147,11 +185,11 @@ export default async function TeamDashboardPage() {
         <h2 className="font-heading text-sm font-semibold uppercase tracking-wide text-ink-2">
           Rounds
         </h2>
-        {!rounds || rounds.length === 0 ? (
+        {visibleRounds.length === 0 ? (
           <EmptyState title="No rounds released yet" description="Check back once Round 1 opens." />
         ) : (
           <ul className="space-y-3">
-            {rounds.map((round) => {
+            {visibleRounds.map((round) => {
               const submission =
                 round.kind === "quiz" ? quizAttemptByRound.get(round.id) : submissionByRound.get(round.id);
               const score = scoreByRound.get(round.id);
@@ -176,10 +214,15 @@ export default async function TeamDashboardPage() {
                         </p>
                       )}
                       {score?.published && (
-                        <p className="mt-1 font-mono text-xs tabular-nums text-ink-2">
-                          Score: {score.total}
-                          {score.max_total ? ` / ${score.max_total}` : ""}
-                        </p>
+                        <ScoreSummary
+                          compact
+                          total={score.total}
+                          maxTotal={score.max_total}
+                          source={score.source}
+                          correctCount={quizDetailByRound.get(round.id)?.correct_count ?? null}
+                          questionCount={quizDetailByRound.get(round.id)?.question_count ?? null}
+                          percent={quizDetailByRound.get(round.id)?.percent ?? null}
+                        />
                       )}
                     </div>
                     <StatusPill status={status} />

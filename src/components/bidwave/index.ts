@@ -13,3 +13,4 @@ export * from "@/components/bidwave/data-table";
 export * from "@/components/bidwave/meter-bar";
 export * from "@/components/bidwave/loading-skeletons";
 export * from "@/components/bidwave/radial-score";
+export * from "@/components/bidwave/score-summary";

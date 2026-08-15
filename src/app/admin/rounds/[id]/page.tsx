@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
 import { BackLink } from "@/components/bidwave";
 import { RoundWorkspace } from "@/app/admin/rounds/[id]/round-workspace";
+import type { EligibilityTeamRow } from "@/app/admin/rounds/[id]/eligibility-picker";
 
 export const metadata: Metadata = { title: "Round workspace" };
 
@@ -15,7 +16,14 @@ export default async function AdminRoundWorkspacePage({ params }: { params: Prom
 
   const [{ data: teams }, { data: materials }, { data: criteria }, { data: submissions }, { data: scores }] =
     await Promise.all([
-      supabase.from("teams").select("id, name").order("name"),
+      // Scoped to the round's own edition — admin RLS returns every team in
+      // the project, so an unfiltered list would mix other editions' teams
+      // into this round's scoring UI.
+      supabase
+        .from("teams")
+        .select("id, name")
+        .eq("event_edition_id", round.event_edition_id)
+        .order("name"),
       supabase.from("round_materials").select("*").eq("round_id", id).order("position"),
       supabase.from("rubric_criteria").select("*").eq("round_id", id).order("position"),
       supabase
@@ -91,6 +99,60 @@ export default async function AdminRoundWorkspacePage({ params }: { params: Prom
     }));
   }
 
+  // Round-policy + eligibility context (the Round 1 re-attempt). Only the
+  // quiz workspace surfaces these, so everything here is skipped otherwise.
+  const [{ data: otherRounds }, { data: supersededRound }, { data: eligibleRows }] = await Promise.all([
+    round.kind === "quiz"
+      ? supabase
+          .from("rounds")
+          .select("id, title")
+          .eq("event_edition_id", round.event_edition_id)
+          .neq("id", id)
+          .order("sequence")
+      : Promise.resolve({ data: [] }),
+    round.supersedes_round_id
+      ? supabase.from("rounds").select("id, title").eq("id", round.supersedes_round_id).maybeSingle()
+      : Promise.resolve({ data: null }),
+    // Only an invite-only round has an allowlist to show; every other quiz
+    // round would pay for these two queries (and the prior-attempt fetch
+    // below) on every workspace load for nothing.
+    round.is_invite_only
+      ? supabase.from("round_eligible_teams").select("team_id").eq("round_id", id)
+      : Promise.resolve({ data: [] }),
+  ]);
+
+  let eligibilityTeams: EligibilityTeamRow[] = [];
+  if (round.is_invite_only) {
+    // Prior-round context so the admin can curate quickly. Purely
+    // informational — nothing here selects anyone.
+    const { data: priorAttempts } = round.supersedes_round_id
+      ? await supabase
+          .from("quiz_attempts")
+          .select("team_id, status, submit_reason, raw_score, max_score, correct_count, question_count")
+          .eq("round_id", round.supersedes_round_id)
+          .neq("status", "archived")
+      : { data: [] };
+    const priorByTeam = new Map((priorAttempts ?? []).map((a) => [a.team_id, a]));
+    const eligibleIds = new Set((eligibleRows ?? []).map((r) => r.team_id));
+    const attemptTeamIds = new Set(quizAttempts.map((a) => a.team_id));
+
+    eligibilityTeams = (teams ?? []).map((t) => {
+      const prior = priorByTeam.get(t.id);
+      return {
+        id: t.id,
+        name: t.name,
+        priorStatus: prior?.status ?? null,
+        priorReason: prior?.submit_reason ?? null,
+        priorScore: prior?.raw_score ?? null,
+        priorMax: prior?.max_score ?? null,
+        priorCorrect: prior?.correct_count ?? null,
+        priorQuestions: prior?.question_count ?? null,
+        eligible: eligibleIds.has(t.id),
+        hasAttempt: attemptTeamIds.has(t.id),
+      };
+    });
+  }
+
   return (
     <div className="mx-auto w-full max-w-5xl space-y-6 px-6 py-10">
       <BackLink href="/admin/rounds" label="Back to rounds" />
@@ -110,6 +172,16 @@ export default async function AdminRoundWorkspacePage({ params }: { params: Prom
         scores={(scores ?? []) as never}
         quizQuestions={quizQuestions}
         quizAttempts={quizAttempts}
+        policy={{
+          supersedesRoundId: round.supersedes_round_id,
+          supersededRoundTitle: supersededRound?.title ?? null,
+          isInviteOnly: round.is_invite_only,
+          quizExitPolicy: round.quiz_exit_policy,
+          quizStrikeLimit: round.quiz_strike_limit,
+          otherRounds: otherRounds ?? [],
+          roundIsOpen: round.status === "open",
+        }}
+        eligibilityTeams={eligibilityTeams}
       />
     </div>
   );

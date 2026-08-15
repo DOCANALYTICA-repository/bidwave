@@ -16,6 +16,13 @@ import { loginAsAdmin, loginAsTeam, teamName } from "../fixtures";
  * (back-button-crash-regression.spec.ts) and "delta"
  * (quiz-happy-path.spec.ts) attempts on this same round, since
  * quiz_attempts enforces one attempt per (round, team).
+ *
+ * This spec asserts the STRICT exit policy (rounds.quiz_exit_policy =
+ * 'strict', the default and what The Stat Sprint runs), where the first
+ * visibility signal submits immediately. Under the 'lenient' policy used by
+ * the re-attempt round the same signal only raises a warning, so if this
+ * ever starts failing with a warning overlay instead of the Submitted
+ * heading, check the round's policy before touching the assertion.
  */
 const ROUND_NAME = "The Stat Sprint";
 const TEAM = "foxtrot" as const;

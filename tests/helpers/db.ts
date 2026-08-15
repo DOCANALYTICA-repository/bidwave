@@ -219,13 +219,35 @@ export async function createTestRound(
     sequence: number;
     opensAt?: Date | null;
     closesAt?: Date | null;
+    // 20260814050000 — the re-attempt round's policy fields. All four
+    // default to the pre-migration behaviour, so every existing caller
+    // keeps building exactly the round it built before.
+    supersedesRoundId?: string | null;
+    isInviteOnly?: boolean;
+    quizExitPolicy?: "strict" | "lenient";
+    quizStrikeLimit?: number;
   },
 ): Promise<string> {
   const { rows } = await client.query<{ id: string }>(
-    `insert into public.rounds (event_edition_id, kind, sequence, slug, title, opens_at, closes_at)
-     values ($1, $2, $3, $4, $5, $6, $7)
+    `insert into public.rounds (
+       event_edition_id, kind, sequence, slug, title, opens_at, closes_at,
+       supersedes_round_id, is_invite_only, quiz_exit_policy, quiz_strike_limit
+     )
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
      returning id`,
-    [opts.eventEditionId, opts.kind, opts.sequence, opts.slug, opts.slug, opts.opensAt ?? null, opts.closesAt ?? null],
+    [
+      opts.eventEditionId,
+      opts.kind,
+      opts.sequence,
+      opts.slug,
+      opts.slug,
+      opts.opensAt ?? null,
+      opts.closesAt ?? null,
+      opts.supersedesRoundId ?? null,
+      opts.isInviteOnly ?? false,
+      opts.quizExitPolicy ?? "strict",
+      opts.quizStrikeLimit ?? 1,
+    ],
   );
   return rows[0]!.id;
 }

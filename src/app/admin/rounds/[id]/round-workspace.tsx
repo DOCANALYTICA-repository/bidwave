@@ -9,6 +9,11 @@ import { MaterialForm } from "@/app/admin/rounds/[id]/material-form";
 import { CriterionForm } from "@/app/admin/rounds/[id]/criterion-form";
 import { ScoreRow } from "@/app/admin/rounds/[id]/score-row";
 import { QuizBuilder } from "@/app/admin/rounds/[id]/quiz-builder";
+import { RoundPolicyForm } from "@/app/admin/rounds/[id]/round-policy-form";
+import {
+  EligibilityPicker,
+  type EligibilityTeamRow,
+} from "@/app/admin/rounds/[id]/eligibility-picker";
 import { adminDeleteMaterial, adminDeleteRubricCriterion, adminPublishScoresForRound, getSubmissionFileUrl } from "@/app/admin/rounds/actions";
 
 type Team = { id: string; name: string };
@@ -40,6 +45,15 @@ type QuizAttempt = {
   max_score: number | null;
   exitEvents: { kind: string; created_at: string }[];
 };
+type RoundPolicy = {
+  supersedesRoundId: string | null;
+  supersededRoundTitle: string | null;
+  isInviteOnly: boolean;
+  quizExitPolicy: "strict" | "lenient";
+  quizStrikeLimit: number;
+  otherRounds: { id: string; title: string }[];
+  roundIsOpen: boolean;
+};
 
 export function RoundWorkspace({
   roundId,
@@ -51,6 +65,8 @@ export function RoundWorkspace({
   scores,
   quizQuestions,
   quizAttempts,
+  policy,
+  eligibilityTeams,
 }: {
   roundId: string;
   kind: string;
@@ -61,9 +77,12 @@ export function RoundWorkspace({
   scores: Score[];
   quizQuestions: QuizQuestion[];
   quizAttempts: QuizAttempt[];
+  policy: RoundPolicy;
+  eligibilityTeams: EligibilityTeamRow[];
 }) {
   const submissionByTeam = new Map(submissions.map((s) => [s.team_id, s]));
   const scoreByTeam = new Map(scores.map((s) => [s.team_id, s]));
+  const unpublishedCount = scores.filter((s) => !s.published).length;
 
   return (
     <Tabs defaultValue="materials">
@@ -72,6 +91,10 @@ export function RoundWorkspace({
         {kind !== "quiz" && kind !== "auction" && <TabsTrigger value="rubric">Rubric</TabsTrigger>}
         {kind === "submission" && <TabsTrigger value="submissions">Submissions</TabsTrigger>}
         {kind === "quiz" && <TabsTrigger value="quiz">Quiz bank</TabsTrigger>}
+        {kind === "quiz" && <TabsTrigger value="policy">Round policy</TabsTrigger>}
+        {kind === "quiz" && policy.isInviteOnly && (
+          <TabsTrigger value="eligibility">Eligibility</TabsTrigger>
+        )}
         {kind !== "auction" && <TabsTrigger value="scores">Scores</TabsTrigger>}
       </TabsList>
 
@@ -154,9 +177,40 @@ export function RoundWorkspace({
         </TabsContent>
       )}
 
+      {kind === "quiz" && (
+        <TabsContent value="policy" className="max-w-xl pt-4">
+          <RoundPolicyForm
+            roundId={roundId}
+            otherRounds={policy.otherRounds}
+            supersedesRoundId={policy.supersedesRoundId}
+            isInviteOnly={policy.isInviteOnly}
+            quizExitPolicy={policy.quizExitPolicy}
+            quizStrikeLimit={policy.quizStrikeLimit}
+          />
+        </TabsContent>
+      )}
+
+      {kind === "quiz" && policy.isInviteOnly && (
+        <TabsContent value="eligibility" className="pt-4">
+          <EligibilityPicker
+            roundId={roundId}
+            teams={eligibilityTeams}
+            supersededRoundTitle={policy.supersededRoundTitle}
+            roundIsOpen={policy.roundIsOpen}
+          />
+        </TabsContent>
+      )}
+
       {kind !== "auction" && (
       <TabsContent value="scores" className="space-y-3 pt-4">
-        <div className="flex justify-end">
+        <div className="flex items-center justify-end gap-3">
+          {/* Publishing only affects the score rows that exist when it runs;
+              anything submitted afterwards stays invisible to its team. */}
+          {unpublishedCount > 0 && (
+            <span className="rounded border border-gold/40 bg-gold/10 px-2 py-1 text-xs text-gold">
+              {unpublishedCount} scored team(s) cannot see their score yet
+            </span>
+          )}
           <Button
             size="sm"
             variant="outline"

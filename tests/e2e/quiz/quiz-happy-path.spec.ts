@@ -27,6 +27,11 @@ async function addQuestionIfMissing(
   options: [string, string, string, string],
 ) {
   if ((await adminPage.getByText(prompt).count()) > 0) return;
+  // QuizBuilder clears the form in a useEffect once the save succeeds,
+  // which lands after the server round-trip — filling the next question as
+  // soon as the previous one shows up in the list races that reset and the
+  // typed values get wiped, so the submit goes out blank.
+  await expect(adminPage.getByLabel("Prompt")).toHaveValue("");
   await adminPage.getByPlaceholder("Option 1").fill(options[0]);
   await adminPage.getByPlaceholder("Option 2").fill(options[1]);
   await adminPage.getByPlaceholder("Option 3").fill(options[2]);
@@ -89,7 +94,16 @@ test.describe("quiz happy path", () => {
     await page.getByRole("button", { name: "I'm ready — start" }).click();
 
     await playQuizToCompletion(page);
-    await expect(page.getByText("Your attempt has been recorded.")).toBeVisible();
+    // The end screen now explains WHY the attempt ended and shows a receipt
+    // (20260814050000). Reaching here by running the clock out submits with
+    // reason 'completed' (or 'timeout' if the cron backstop got there
+    // first) — both render the same line.
+    await expect(page.getByText("Time ran out and your attempt was submitted automatically.")).toBeVisible();
+    await expect(page.getByText("Questions answered")).toBeVisible();
+    // Scores stay release-gated: the receipt must never leak one.
+    await expect(
+      page.getByText("Your score will appear on your dashboard once it is released by the admin."),
+    ).toBeVisible();
 
     // Confirm the admin monitor recorded a real score for this attempt, not
     // just a "submitted" status with nothing behind it.

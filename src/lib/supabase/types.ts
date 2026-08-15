@@ -22,7 +22,8 @@
  * 20260802010000_fix_simulation_config_placeholder_shape.sql, 20260802020000_admin_broadcast_topics.sql,
  * 20260806120000_fix_quiz_question_position_race.sql,
  * 20260807090000_fix_admin_overloads_and_quiz_position_lock.sql,
- * 20260807100000_simulation_spec_conformance.sql
+ * 20260807100000_simulation_spec_conformance.sql,
+ * 20260814050000_quiz_retest_round.sql
  */
 export type Json =
   | string
@@ -366,6 +367,10 @@ export type Database = {
           archived_at: string | null;
           requires_qualification_from_stage: string | null;
           rubric_total_mode: "weighted_sum" | "weighted_percent";
+          supersedes_round_id: string | null;
+          is_invite_only: boolean;
+          quiz_exit_policy: "strict" | "lenient";
+          quiz_strike_limit: number;
           created_at: string;
           updated_at: string;
         };
@@ -388,6 +393,10 @@ export type Database = {
           archived_at?: string | null;
           requires_qualification_from_stage?: string | null;
           rubric_total_mode?: "weighted_sum" | "weighted_percent";
+          supersedes_round_id?: string | null;
+          is_invite_only?: boolean;
+          quiz_exit_policy?: "strict" | "lenient";
+          quiz_strike_limit?: number;
           created_at?: string;
           updated_at?: string;
         };
@@ -410,6 +419,10 @@ export type Database = {
           archived_at?: string | null;
           requires_qualification_from_stage?: string | null;
           rubric_total_mode?: "weighted_sum" | "weighted_percent";
+          supersedes_round_id?: string | null;
+          is_invite_only?: boolean;
+          quiz_exit_policy?: "strict" | "lenient";
+          quiz_strike_limit?: number;
           created_at?: string;
           updated_at?: string;
         };
@@ -426,6 +439,16 @@ export type Database = {
             columns: ["requires_qualification_from_stage"];
             isOneToOne: false;
             referencedRelation: "stages";
+            referencedColumns: ["id"];
+          },
+          {
+            // isOneToOne because of the partial unique index
+            // rounds_supersedes_round_id_unique: at most one round may
+            // supersede any given round.
+            foreignKeyName: "rounds_supersedes_round_id_fkey";
+            columns: ["supersedes_round_id"];
+            isOneToOne: true;
+            referencedRelation: "rounds";
             referencedColumns: ["id"];
           },
         ];
@@ -1044,8 +1067,14 @@ export type Database = {
           raw_score: number | null;
           max_score: number | null;
           percent: number | null;
+          correct_count: number | null;
+          question_count: number | null;
           session_token: string;
           session_seen_at: string;
+          strike_count: number;
+          last_strike_at: string | null;
+          last_strike_kind: string | null;
+          warning_ack_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -1073,8 +1102,14 @@ export type Database = {
           raw_score?: number | null;
           max_score?: number | null;
           percent?: number | null;
+          correct_count?: number | null;
+          question_count?: number | null;
           session_token?: string;
           session_seen_at?: string;
+          strike_count?: number;
+          last_strike_at?: string | null;
+          last_strike_kind?: string | null;
+          warning_ack_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -1102,8 +1137,14 @@ export type Database = {
           raw_score?: number | null;
           max_score?: number | null;
           percent?: number | null;
+          correct_count?: number | null;
+          question_count?: number | null;
           session_token?: string;
           session_seen_at?: string;
+          strike_count?: number;
+          last_strike_at?: string | null;
+          last_strike_kind?: string | null;
+          warning_ack_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -1198,6 +1239,55 @@ export type Database = {
             columns: ["attempt_id"];
             isOneToOne: false;
             referencedRelation: "quiz_attempts";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      round_eligible_teams: {
+        Row: {
+          round_id: string;
+          team_id: string;
+          event_edition_id: string;
+          reason: string | null;
+          added_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          round_id: string;
+          team_id: string;
+          event_edition_id: string;
+          reason?: string | null;
+          added_by?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          round_id?: string;
+          team_id?: string;
+          event_edition_id?: string;
+          reason?: string | null;
+          added_by?: string | null;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "round_eligible_teams_round_id_fkey";
+            columns: ["round_id"];
+            isOneToOne: false;
+            referencedRelation: "rounds";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "round_eligible_teams_team_id_fkey";
+            columns: ["team_id"];
+            isOneToOne: false;
+            referencedRelation: "teams";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "round_eligible_teams_event_edition_id_fkey";
+            columns: ["event_edition_id"];
+            isOneToOne: false;
+            referencedRelation: "event_editions";
             referencedColumns: ["id"];
           },
         ];
@@ -2017,6 +2107,10 @@ export type Database = {
           archived_at: string | null;
           requires_qualification_from_stage: string | null;
           rubric_total_mode: "weighted_sum" | "weighted_percent";
+          supersedes_round_id: string | null;
+          is_invite_only: boolean;
+          quiz_exit_policy: "strict" | "lenient";
+          quiz_strike_limit: number;
           created_at: string;
           updated_at: string;
           status: string;
@@ -2318,6 +2412,60 @@ export type Database = {
       log_quiz_events: {
         Args: { p_team_id: string; p_round_id: string; p_session_token: string; p_events: Json };
         Returns: number;
+      };
+      record_quiz_strike: {
+        Args: {
+          p_team_id: string;
+          p_round_id: string;
+          p_session_token: string;
+          p_kind: string;
+        };
+        Returns: Json;
+      };
+      ack_quiz_warning: {
+        Args: { p_team_id: string; p_round_id: string; p_session_token: string };
+        Returns: undefined;
+      };
+      resume_quiz_attempt: {
+        Args: { p_team_id: string; p_round_id: string };
+        Returns: Json;
+      };
+      team_is_round_eligible: {
+        Args: { p_round_id: string; p_team_id: string };
+        Returns: boolean;
+      };
+      admin_set_round_eligibility: {
+        Args: {
+          p_round_id: string;
+          p_team_ids: string[];
+          p_admin_id?: string | null;
+          p_reason?: string | null;
+        };
+        Returns: number;
+      };
+      admin_add_round_eligible_team: {
+        Args: {
+          p_round_id: string;
+          p_team_id: string;
+          p_reason?: string | null;
+          p_admin_id?: string | null;
+        };
+        Returns: undefined;
+      };
+      admin_remove_round_eligible_team: {
+        Args: { p_round_id: string; p_team_id: string; p_admin_id?: string | null };
+        Returns: undefined;
+      };
+      admin_set_round_policy: {
+        Args: {
+          p_round_id: string;
+          p_supersedes_round_id: string | null;
+          p_is_invite_only: boolean;
+          p_quiz_exit_policy: string;
+          p_quiz_strike_limit: number;
+          p_admin_id?: string | null;
+        };
+        Returns: undefined;
       };
       tick_quiz_attempts: {
         Args: Record<string, never>;
