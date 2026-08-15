@@ -48,7 +48,7 @@ export function FileDropDemo() {
     <FileDrop
       value={files}
       onChange={setFiles}
-      accept=".pdf,.pptx,.docx,.xlsx"
+      accept=".pdf,.pptx,.docx,.xlsx,.mp4,.mov,.webm,.m4v,.mkv"
       maxSizeBytes={100 * 1024 * 1024}
     />
   );

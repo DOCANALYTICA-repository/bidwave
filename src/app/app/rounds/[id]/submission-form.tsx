@@ -13,6 +13,21 @@ import { uploadToTarget } from "@/lib/uploads/upload-client";
 
 const initialState: SubmitRoundFilesState = { status: "idle" };
 
+// Documents plus video deliverables. Must stay in step with
+// ALLOWED_EXTENSIONS / ALLOWED_MIME_TYPES in ./actions.ts, which is the
+// control — this is only the picker's filter.
+const SUBMISSION_ACCEPT = ".pdf,.pptx,.docx,.xlsx,.mp4,.mov,.webm,.m4v,.mkv";
+
+// The outer ceiling only — actions.ts holds the real, per-kind limits
+// (250MB video / 50MB document) and reports an oversized document
+// precisely, before any bytes are uploaded. Can't be imported: actions.ts
+// is "use server", which may only export async functions. Surfaced here so
+// a phone-sized video is rejected in the picker rather than after Storage
+// refuses it (ERR-02).
+// Raise to 250 together with MAX_VIDEO_BYTES in actions.ts once the
+// project-wide Storage limit allows it — see the note there.
+const MAX_SUBMISSION_BYTES = 50 * 1024 * 1024;
+
 export function SubmissionForm({ roundId, disabled }: { roundId: string; disabled: boolean }) {
   const [files, setFiles] = useState<File[]>([]);
   const [state, formAction, isSubmitting] = useActionState(submitRoundFiles, initialState);
@@ -72,7 +87,8 @@ export function SubmissionForm({ roundId, disabled }: { roundId: string; disable
       <FileDrop
         value={files}
         onChange={setFiles}
-        accept=".pdf,.pptx,.docx,.xlsx"
+        accept={SUBMISSION_ACCEPT}
+        maxSizeBytes={MAX_SUBMISSION_BYTES}
         disabled={disabled || isPending}
       />
       {(uploadError || (state.status === "error" && state.formError)) && (

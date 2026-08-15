@@ -19,7 +19,8 @@ function formatBytes(bytes: number) {
 
 /**
  * Controlled drag-and-drop / click file picker for round submissions
- * (§9.1: multiple PDF/PPTX/DOCX/XLSX, freely replaceable until close) and
+ * (§9.1: multiple PDF/PPTX/DOCX/XLSX or video files, freely replaceable
+ * until close) and
  * the registration invoice upload (REG-07: PDF/JPG/PNG). The app has no
  * application-level size limit (§9.1) — `maxSizeBytes` here is only the
  * infrastructure ceiling surfaced honestly up front (ERR-02), not a rule

@@ -17,21 +17,42 @@ export type SubmitRoundFilesState = {
 };
 
 // A round deck is routinely tens of megabytes; the only ceiling that
-// applies now is the bucket's own (migration 20260812…), surfaced here so
-// the server rejects an over-limit object rather than recording a row for
-// something Storage refused.
-const MAX_SUBMISSION_BYTES = 50 * 1024 * 1024;
+// applies now is the bucket's own (migration 20260815100000…), surfaced
+// here so the server rejects an over-limit object rather than recording a
+// row for something Storage refused. Video gets the full bucket ceiling —
+// a few minutes of footage clears 50MB easily — while documents keep the
+// tighter one, since a 250MB deck is a mistake, not a submission.
+const MAX_DOCUMENT_BYTES = 50 * 1024 * 1024;
+// Intended to be 250MB (the bucket is already set to it — migration
+// 20260815100000), but the *project-wide* Storage upload limit currently
+// caps every object at 50MB regardless of the bucket's own setting:
+// verified by direct upload against the live project with the bucket at
+// 250MB — 50MB succeeded, 60MB was refused with "The object exceeded the
+// maximum allowed size". That global limit lives in the Supabase dashboard
+// (Project Settings → Storage), and raising it past 50MB requires a paid
+// plan. Once it is raised, this becomes 250 and the value below in
+// submission-form.tsx with it — nothing else changes.
+const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
 const MAX_SUBMISSION_FILES = 10;
 
-// Audit high-priority #18: only the client's `accept=".pdf,.pptx,.docx,.xlsx"`
+// Audit high-priority #18: only the client's `accept=` list
 // (submission-form.tsx) constrained upload type — trivially bypassable via
 // a direct form-data POST. Mirrors that same allowlist server-side.
-const ALLOWED_EXTENSIONS = [".pdf", ".pptx", ".docx", ".xlsx"];
+// Video formats are accepted for rounds whose deliverable is a recording;
+// keep this list and SUBMISSION_ACCEPT in submission-form.tsx in step.
+const VIDEO_EXTENSIONS = [".mp4", ".mov", ".webm", ".m4v", ".mkv"];
+const DOCUMENT_EXTENSIONS = [".pdf", ".pptx", ".docx", ".xlsx"];
+const ALLOWED_EXTENSIONS = [...DOCUMENT_EXTENSIONS, ...VIDEO_EXTENSIONS];
 const ALLOWED_MIME_TYPES = [
   "application/pdf",
   "application/vnd.openxmlformats-officedocument.presentationml.presentation",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "video/mp4",
+  "video/quicktime",
+  "video/webm",
+  "video/x-m4v",
+  "video/x-matroska",
 ];
 
 function hasAllowedFileType(file: { name: string; type: string }): boolean {
@@ -39,6 +60,20 @@ function hasAllowedFileType(file: { name: string; type: string }): boolean {
   const hasAllowedExtension = ALLOWED_EXTENSIONS.some((ext) => lowerName.endsWith(ext));
   const hasAllowedMimeType = !file.type || ALLOWED_MIME_TYPES.includes(file.type);
   return hasAllowedExtension && hasAllowedMimeType;
+}
+
+/**
+ * The size ceiling depends on the kind of file, and the extension is what
+ * decides it — the browser-reported MIME type is absent often enough
+ * (see hasAllowedFileType) that it can't carry this. A file that reaches
+ * here has already passed the allowlist, so anything not a known video
+ * extension is a document.
+ */
+function maxBytesForFile(name: string): number {
+  const lowerName = name.toLowerCase();
+  return VIDEO_EXTENSIONS.some((ext) => lowerName.endsWith(ext))
+    ? MAX_VIDEO_BYTES
+    : MAX_DOCUMENT_BYTES;
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -77,10 +112,12 @@ export async function createSubmissionUploadTargets(
     };
   }
 
-  const oversized = files.find((f) => f.size <= 0 || f.size > MAX_SUBMISSION_BYTES);
+  const oversized = files.find((f) => f.size <= 0 || f.size > maxBytesForFile(f.name));
   if (oversized) {
     return {
-      error: `"${oversized.name}" is empty or larger than ${MAX_SUBMISSION_BYTES / (1024 * 1024)}MB.`,
+      error: `"${oversized.name}" is empty or larger than ${
+        maxBytesForFile(oversized.name) / (1024 * 1024)
+      }MB.`,
     };
   }
 
@@ -150,7 +187,7 @@ export async function submitRoundFiles(
   for (const file of claimed) {
     const verified = await verifyUploadedObject("submissions", file.path, {
       expectedPrefix: `${user.id}/${roundId}`,
-      maxBytes: MAX_SUBMISSION_BYTES,
+      maxBytes: maxBytesForFile(file.name),
     });
     if (!verified) {
       await removeUploadedObjects("submissions", allPaths);
