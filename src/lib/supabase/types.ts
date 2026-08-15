@@ -582,30 +582,37 @@ export type Database = {
         ];
       };
       submission_files: {
+        // storage_path/mime_type are null on a shared-link row and
+        // external_url is null on an uploaded one — exactly one of the two
+        // is set (submission_files_object_xor_link, migration
+        // 20260815110000).
         Row: {
           id: string;
           submission_id: string;
-          storage_path: string;
+          storage_path: string | null;
+          external_url: string | null;
           file_name: string;
-          mime_type: string;
+          mime_type: string | null;
           uploaded_at: string;
           superseded_at: string | null;
         };
         Insert: {
           id?: string;
           submission_id: string;
-          storage_path: string;
+          storage_path?: string | null;
+          external_url?: string | null;
           file_name: string;
-          mime_type: string;
+          mime_type?: string | null;
           uploaded_at?: string;
           superseded_at?: string | null;
         };
         Update: {
           id?: string;
           submission_id?: string;
-          storage_path?: string;
+          storage_path?: string | null;
+          external_url?: string | null;
           file_name?: string;
-          mime_type?: string;
+          mime_type?: string | null;
           uploaded_at?: string;
           superseded_at?: string | null;
         };

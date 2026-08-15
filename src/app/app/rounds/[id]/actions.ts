@@ -10,6 +10,8 @@ import {
   verifyUploadedObject,
 } from "@/lib/uploads/direct-upload";
 import type { UploadTarget } from "@/lib/uploads/types";
+import { parseSharedLink } from "@/lib/validation/shared-link";
+import { isSharedLinkUnviewable } from "@/lib/uploads/shared-link";
 
 export type SubmitRoundFilesState = {
   status: "idle" | "error" | "success";
@@ -76,6 +78,31 @@ function maxBytesForFile(name: string): number {
     : MAX_DOCUMENT_BYTES;
 }
 
+/**
+ * An over-cap file is a dead end unless the team is told what to do about
+ * it, so the limit and the way around it arrive in the same sentence
+ * (ERR-02). The form says this too, before any bytes move; this is the
+ * copy a direct POST gets.
+ */
+function oversizeMessage(name: string): string {
+  const mb = maxBytesForFile(name) / (1024 * 1024);
+  return `"${name}" is larger than ${mb}MB, which is the most we can store. Upload it to Google Drive, set sharing to "Anyone with the link", and submit the link instead.`;
+}
+
+/**
+ * `file_name` is what judges and exports show, and a link row has no file
+ * to take one from — so fall back to the host when the team didn't label
+ * it ("drive.google.com" reads better in a submissions list than a 60-char
+ * opaque URL).
+ */
+function linkFileName(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "Shared link";
+  }
+}
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
@@ -112,14 +139,11 @@ export async function createSubmissionUploadTargets(
     };
   }
 
-  const oversized = files.find((f) => f.size <= 0 || f.size > maxBytesForFile(f.name));
-  if (oversized) {
-    return {
-      error: `"${oversized.name}" is empty or larger than ${
-        maxBytesForFile(oversized.name) / (1024 * 1024)
-      }MB.`,
-    };
-  }
+  const empty = files.find((f) => f.size <= 0);
+  if (empty) return { error: `"${empty.name}" is empty.` };
+
+  const oversized = files.find((f) => f.size > maxBytesForFile(f.name));
+  if (oversized) return { error: oversizeMessage(oversized.name) };
 
   const dir = `${user.id}/${roundId}`;
   const targets: UploadTarget[] = [];
@@ -154,19 +178,26 @@ export async function submitRoundFiles(
   if (!UUID_RE.test(roundId)) return { status: "error", formError: "Unknown round." };
 
   let claimed: { path: string; name: string; type: string }[];
+  let claimedLinks: { url: string; label: string }[];
   try {
     claimed = JSON.parse(String(formData.get("files") ?? "[]"));
+    claimedLinks = JSON.parse(String(formData.get("links") ?? "[]"));
   } catch {
     return { status: "error", formError: "Invalid submission — please refresh and try again." };
   }
 
-  if (!Array.isArray(claimed) || claimed.length < 1) {
-    return { status: "error", formError: "At least one file is required." };
+  if (!Array.isArray(claimed)) claimed = [];
+  if (!Array.isArray(claimedLinks)) claimedLinks = [];
+
+  // A submission is a set of entries — uploaded objects, shared links, or
+  // both. Only the total has to be non-empty.
+  if (claimed.length + claimedLinks.length < 1) {
+    return { status: "error", formError: "Add at least one file or link." };
   }
-  if (claimed.length > MAX_SUBMISSION_FILES) {
+  if (claimed.length + claimedLinks.length > MAX_SUBMISSION_FILES) {
     return {
       status: "error",
-      formError: `At most ${MAX_SUBMISSION_FILES} files can be submitted at once.`,
+      formError: `At most ${MAX_SUBMISSION_FILES} files and links can be submitted at once.`,
     };
   }
 
@@ -178,10 +209,37 @@ export async function submitRoundFiles(
     };
   }
 
+  // Links are re-parsed here rather than trusted from the form: the
+  // client-side check is UX, this is the control (same module, same
+  // wording, so a team never sees two different rejections for one paste).
+  const entries: {
+    storage_path?: string;
+    file_name: string;
+    mime_type?: string;
+    external_url?: string;
+  }[] = [];
+
+  for (const link of claimedLinks) {
+    const parsed = parseSharedLink(String(link?.url ?? ""));
+    if (!parsed.ok) return { status: "error", formError: parsed.message };
+
+    if (await isSharedLinkUnviewable(parsed.url)) {
+      return {
+        status: "error",
+        formError:
+          "We couldn't open that link — it asks for sign-in, or doesn't exist. In Google Drive, open Share → General access, set it to \"Anyone with the link\" as Viewer, copy the link again, then submit.",
+      };
+    }
+
+    entries.push({
+      external_url: parsed.url,
+      file_name: String(link?.label ?? "").trim() || linkFileName(parsed.url),
+    });
+  }
+
   // `expectedPrefix` is the ownership check: a path outside this team's
   // own round folder is refused before it can be recorded, no matter what
   // the client posted.
-  const uploaded: { storage_path: string; file_name: string; mime_type: string }[] = [];
   const allPaths = claimed.map((f) => f.path);
 
   for (const file of claimed) {
@@ -196,7 +254,7 @@ export async function submitRoundFiles(
         formError: `We couldn't read "${file.name}" after upload. Please try again.`,
       };
     }
-    uploaded.push({
+    entries.push({
       storage_path: file.path,
       file_name: file.name,
       mime_type: verified.contentType,
@@ -207,7 +265,7 @@ export async function submitRoundFiles(
   const { error } = await admin.rpc("submit_round_files", {
     p_team_id: user.id,
     p_round_id: roundId,
-    p_files: uploaded,
+    p_files: entries,
   });
 
   if (error) {

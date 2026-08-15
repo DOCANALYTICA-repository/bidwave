@@ -152,7 +152,9 @@ async function exportSubmissions(admin: AdminClient, eventEditionId: string) {
   const [{ data: submissions }, { data: teams }] = await Promise.all([
     admin
       .from("submissions")
-      .select("round_id, team_id, status, submitted_at, submission_files(file_name, superseded_at)")
+      .select(
+        "round_id, team_id, status, submitted_at, submission_files(file_name, external_url, superseded_at)",
+      )
       .in("round_id", roundIds),
     admin.from("teams").select("id, name").eq("event_edition_id", eventEditionId),
   ]);
@@ -168,6 +170,15 @@ async function exportSubmissions(admin: AdminClient, eventEditionId: string) {
     current_files: (s.submission_files ?? [])
       .filter((f: { superseded_at: string | null }) => !f.superseded_at)
       .map((f: { file_name: string }) => f.file_name)
+      .join("; "),
+    // Shared links (files above the Storage cap) carry no bytes we hold,
+    // so the URL itself is the deliverable and belongs in the export.
+    current_links: (s.submission_files ?? [])
+      .filter(
+        (f: { superseded_at: string | null; external_url: string | null }) =>
+          !f.superseded_at && f.external_url,
+      )
+      .map((f: { external_url: string | null }) => f.external_url)
       .join("; "),
   }));
 }
@@ -195,7 +206,9 @@ async function buildSubmissionFilesZip(admin: AdminClient, eventEditionId: strin
   const [{ data: submissions }, { data: teams }] = await Promise.all([
     admin
       .from("submissions")
-      .select("round_id, team_id, status, submitted_at, submission_files(storage_path, file_name, superseded_at)")
+      .select(
+        "round_id, team_id, status, submitted_at, submission_files(storage_path, external_url, file_name, superseded_at)",
+      )
       .in("round_id", roundIds),
     admin.from("teams").select("id, name").eq("event_edition_id", eventEditionId),
   ]);
@@ -210,16 +223,31 @@ async function buildSubmissionFilesZip(admin: AdminClient, eventEditionId: strin
     const teamName = (teamNameById.get(s.team_id) ?? s.team_id) as string;
     const currentFiles = (s.submission_files ?? []).filter(
       (f: { superseded_at: string | null }) => !f.superseded_at,
-    ) as { storage_path: string; file_name: string }[];
+    ) as { storage_path: string | null; external_url: string | null; file_name: string }[];
 
     if (currentFiles.length === 0) {
-      manifest.push({ round: roundTitle, team: teamName, status: s.status, file: "" });
+      manifest.push({ round: roundTitle, team: teamName, status: s.status, file: "", link: "" });
       continue;
     }
 
     for (const f of currentFiles) {
-      const { data: blob, error } = await admin.storage.from("submissions").download(f.storage_path);
-      manifest.push({ round: roundTitle, team: teamName, status: s.status, file: f.file_name, download_error: error?.message ?? "" });
+      // A link submission has no bytes to archive (the file lives in the
+      // team's Drive), so it appears in the manifest only — otherwise it
+      // would silently vanish from the judging hand-off.
+      if (f.external_url) {
+        manifest.push({
+          round: roundTitle,
+          team: teamName,
+          status: s.status,
+          file: f.file_name,
+          link: f.external_url,
+          download_error: "",
+        });
+        continue;
+      }
+
+      const { data: blob, error } = await admin.storage.from("submissions").download(f.storage_path!);
+      manifest.push({ round: roundTitle, team: teamName, status: s.status, file: f.file_name, link: "", download_error: error?.message ?? "" });
       if (error || !blob) continue;
 
       const buffer = Buffer.from(await blob.arrayBuffer());

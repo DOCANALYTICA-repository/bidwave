@@ -28,7 +28,9 @@ export default async function AdminRoundWorkspacePage({ params }: { params: Prom
       supabase.from("rubric_criteria").select("*").eq("round_id", id).order("position"),
       supabase
         .from("submissions")
-        .select("team_id, status, submitted_at, submission_files(id, storage_path, file_name, superseded_at)")
+        .select(
+          "team_id, status, submitted_at, submission_files(id, storage_path, external_url, file_name, superseded_at)",
+        )
         .eq("round_id", id),
       supabase.from("scores").select("*").eq("round_id", id),
     ]);

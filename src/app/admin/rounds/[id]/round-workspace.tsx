@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
+import { Link as LinkIcon } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { StatusPill } from "@/components/bidwave";
@@ -23,7 +24,13 @@ type Submission = {
   team_id: string;
   status: string;
   submitted_at: string | null;
-  submission_files: { id: string; storage_path: string; file_name: string; superseded_at: string | null }[];
+  submission_files: {
+    id: string;
+    storage_path: string | null;
+    external_url: string | null;
+    file_name: string;
+    superseded_at: string | null;
+  }[];
 };
 type Score = { team_id: string; id: string; total: number; max_total: number | null; published: boolean; updated_at: string; notes: string | null };
 
@@ -160,9 +167,13 @@ export function RoundWorkspace({
               </div>
               {files.length > 0 && (
                 <ul className="mt-1 space-y-1">
-                  {files.map((f) => (
-                    <FileLink key={f.id} storagePath={f.storage_path} fileName={f.file_name} />
-                  ))}
+                  {files.map((f) =>
+                    f.external_url ? (
+                      <ExternalSubmissionLink key={f.id} url={f.external_url} />
+                    ) : (
+                      <FileLink key={f.id} storagePath={f.storage_path!} fileName={f.file_name} />
+                    ),
+                  )}
                 </ul>
               )}
             </div>
@@ -252,6 +263,27 @@ export function RoundWorkspace({
       </TabsContent>
       )}
     </Tabs>
+  );
+}
+
+/**
+ * A submission the team shared as a link rather than an upload (files over
+ * the Storage cap — see actions.ts). Nothing to sign: the URL is already
+ * public, which is checked at submission time.
+ */
+function ExternalSubmissionLink({ url }: { url: string }) {
+  return (
+    <li>
+      <Button
+        type="button"
+        variant="tile"
+        size="xs"
+        onClick={() => window.open(url, "_blank", "noopener,noreferrer")}
+      >
+        <LinkIcon className="size-3.5" />
+        {url}
+      </Button>
+    </li>
   );
 }
 

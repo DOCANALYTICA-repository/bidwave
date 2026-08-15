@@ -32,6 +32,7 @@ export function FileDrop({
   accept,
   multiple = true,
   maxSizeBytes,
+  onOversize,
   disabled,
   className,
 }: {
@@ -41,6 +42,14 @@ export function FileDrop({
   accept?: string;
   multiple?: boolean;
   maxSizeBytes?: number;
+  /**
+   * Called with the files that were turned away for being over
+   * `maxSizeBytes`. Lets a caller offer the way around the limit (round
+   * submissions answer with the shared-link field) instead of leaving the
+   * team with a dead end. When set, the caller owns the messaging and this
+   * component renders none.
+   */
+  onOversize?: (files: File[]) => void;
   disabled?: boolean;
   className?: string;
 }) {
@@ -68,10 +77,13 @@ export function FileDrop({
         ? next.filter((f) => f.size > maxSizeBytes)
         : [];
       if (oversized.length > 0) {
+        onOversize?.(oversized);
         setOversizeError(
-          `${oversized.map((f) => f.name).join(", ")} exceed${
-            oversized.length === 1 ? "s" : ""
-          } the ${formatBytes(maxSizeBytes!)} upload limit.`,
+          onOversize
+            ? null
+            : `${oversized.map((f) => f.name).join(", ")} exceed${
+                oversized.length === 1 ? "s" : ""
+              } the ${formatBytes(maxSizeBytes!)} upload limit.`,
         );
       } else {
         setOversizeError(null);
@@ -79,7 +91,7 @@ export function FileDrop({
       const accepted = next.filter((f) => !oversized.includes(f));
       onChange(multiple ? [...value, ...accepted] : accepted.slice(0, 1));
     },
-    [disabled, mounted, maxSizeBytes, multiple, onChange, value],
+    [disabled, mounted, maxSizeBytes, multiple, onChange, onOversize, value],
   );
 
   return (

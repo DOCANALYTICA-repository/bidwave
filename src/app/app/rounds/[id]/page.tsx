@@ -43,7 +43,9 @@ export default async function TeamRoundPage({ params }: { params: Promise<{ id: 
       supabase.from("rubric_criteria").select("*").eq("round_id", id).order("position"),
       supabase
         .from("submissions")
-        .select("status, submitted_at, submission_files(id, file_name, storage_path, uploaded_at, superseded_at)")
+        .select(
+          "status, submitted_at, submission_files(id, file_name, storage_path, external_url, uploaded_at, superseded_at)",
+        )
         .eq("round_id", id)
         .eq("team_id", user.id)
         .maybeSingle(),
@@ -121,10 +123,16 @@ export default async function TeamRoundPage({ params }: { params: Promise<{ id: 
   const submissionDownloadUrls = new Map(
     (
       await Promise.all(
-        currentFiles.map(async (f) => {
-          const { data } = await supabase.storage.from("submissions").createSignedUrl(f.storage_path, 300);
-          return [f.id, data?.signedUrl ?? null] as const;
-        }),
+        // Link entries have no stored object to sign — they carry their
+        // own URL and are rendered straight from external_url below.
+        currentFiles
+          .filter((f) => f.storage_path)
+          .map(async (f) => {
+            const { data } = await supabase.storage
+              .from("submissions")
+              .createSignedUrl(f.storage_path!, 300);
+            return [f.id, data?.signedUrl ?? null] as const;
+          }),
       )
     ).filter(([, url]) => url !== null),
   );
@@ -207,12 +215,16 @@ export default async function TeamRoundPage({ params }: { params: Promise<{ id: 
           {currentFiles.length > 0 && (
             <ul className="space-y-1 text-sm">
               {currentFiles.map((f) => {
-                const url = submissionDownloadUrls.get(f.id);
+                const url = f.external_url ?? submissionDownloadUrls.get(f.id);
                 return (
                   <li key={f.id} className="text-ink-2">
                     {url ? (
-                      <a href={url} className="text-gold hover:underline">
-                        {f.file_name}
+                      <a
+                        href={url}
+                        className="text-gold hover:underline"
+                        {...(f.external_url ? { target: "_blank", rel: "noreferrer" } : {})}
+                      >
+                        {f.external_url ?? f.file_name}
                       </a>
                     ) : (
                       f.file_name
