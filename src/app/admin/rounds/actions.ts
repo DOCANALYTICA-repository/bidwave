@@ -52,7 +52,12 @@ export async function getRoundsData(): Promise<RoundsQueryResult> {
           .eq("event_edition_id", edition.id)
           .order("sequence")
       : Promise.resolve({ data: [], error: null }),
-    supabase.from("stages").select("id, label").order("code"),
+    // Edition-scoped for the same reason as the rounds query above: without
+    // it the round form's qualification-stage picker lists the e2e-test
+    // edition's stages too, as four identical-looking duplicate labels.
+    edition
+      ? supabase.from("stages").select("id, label").eq("event_edition_id", edition.id).order("code")
+      : Promise.resolve({ data: [] }),
   ]);
 
   const roundIds = (rounds ?? []).map((r) => r.id);

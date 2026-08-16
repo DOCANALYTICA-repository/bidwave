@@ -6,6 +6,18 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdmin } from "@/lib/require-role";
 import { selectCurrentEdition } from "@/lib/event-edition";
 
+/**
+ * Chronological stage order. `code` sorts alphabetically to final, r1_r2,
+ * r3_r4, r6 — which puts the Final first, ahead of the rounds that feed it.
+ * There is no sequence column on stages (the vocabulary is closed and fixed
+ * by a CHECK constraint), so the running order lives here.
+ */
+const STAGE_ORDER = ["r1_r2", "r3_r4", "r6", "final"];
+
+function byStageOrder(a: { code: string }, b: { code: string }) {
+  return STAGE_ORDER.indexOf(a.code) - STAGE_ORDER.indexOf(b.code);
+}
+
 export type StagesQueryResult = {
   stages: { id: string; code: string; label: string }[];
   rounds: { id: string; title: string; kind: string; sequence: number }[];
@@ -20,7 +32,12 @@ export async function getStagesData(): Promise<StagesQueryResult> {
   const supabase = await createClient();
   const { data: edition } = await selectCurrentEdition(supabase);
   const [{ data: stages }, { data: rounds }, { data: stageRounds }] = await Promise.all([
-    supabase.from("stages").select("id, code, label").order("code"),
+    // Scoped to the current edition — stages are unique per (edition, code),
+    // so an unfiltered select returns the e2e-test edition's four stages
+    // alongside the real ones and every stage renders twice.
+    edition
+      ? supabase.from("stages").select("id, code, label").eq("event_edition_id", edition.id)
+      : Promise.resolve({ data: [] }),
     edition
       ? supabase
           .from("rounds")
@@ -30,7 +47,11 @@ export async function getStagesData(): Promise<StagesQueryResult> {
       : Promise.resolve({ data: [] }),
     supabase.from("stage_rounds").select("stage_id, round_id, weight"),
   ]);
-  return { stages: stages ?? [], rounds: rounds ?? [], stageRounds: stageRounds ?? [] };
+  return {
+    stages: (stages ?? []).slice().sort(byStageOrder),
+    rounds: rounds ?? [],
+    stageRounds: stageRounds ?? [],
+  };
 }
 
 export async function getStageStandings(stageId: string) {
