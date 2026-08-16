@@ -31,7 +31,7 @@ export default async function AdminFinalResultsPage() {
     supabase.from("qualifications").select("stage_id, team_id, decision, rank"),
     supabase
       .from("leaderboard_snapshots")
-      .select("id, published_at, hidden_at, leaderboard_snapshot_entries(rank, team_name, score)")
+      .select("id, published_at, hidden_at, covers_label, leaderboard_snapshot_entries(rank, team_name, score)")
       .eq("event_edition_id", edition?.id ?? "")
       .eq("kind", "final_top_10")
       .is("hidden_at", null)

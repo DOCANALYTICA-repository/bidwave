@@ -12,6 +12,7 @@ export type LeaderboardQueryResult = {
     id: string;
     published_at: string;
     hidden_at: string | null;
+    covers_label: string | null;
     leaderboard_snapshot_entries: { rank: number; team_name: string; score: number }[];
   } | null;
 };
@@ -26,7 +27,7 @@ export async function getLeaderboardData(eventEditionId: string): Promise<Leader
     supabase.from("teams").select("id, name").eq("event_edition_id", eventEditionId).order("name"),
     supabase
       .from("leaderboard_snapshots")
-      .select("id, published_at, hidden_at, leaderboard_snapshot_entries(rank, team_name, score)")
+      .select("id, published_at, hidden_at, covers_label, leaderboard_snapshot_entries(rank, team_name, score)")
       .eq("event_edition_id", eventEditionId)
       .eq("kind", "top_15")
       .is("hidden_at", null)
@@ -39,6 +40,8 @@ export async function adminPublishLeaderboard(
   kind: "top_15" | "final_top_10",
   entries: { rank: number; team_name: string; score: number }[],
   entryLimit: number,
+  /** What this snapshot covers, e.g. "After Rounds 1 + 2" — shown publicly. */
+  coversLabel?: string,
 ): Promise<{ error?: string }> {
   const adminUser = await requireAdmin();
   const admin = createAdminClient();
@@ -50,6 +53,7 @@ export async function adminPublishLeaderboard(
     p_entries: entries,
     p_entry_limit: entryLimit,
     p_admin_id: adminUser.id,
+    p_covers_label: coversLabel?.trim() || null,
   });
   if (error) return { error: error.message };
   revalidatePath("/admin/leaderboard");

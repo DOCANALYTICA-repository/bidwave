@@ -2,11 +2,29 @@ import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
 import { selectCurrentEdition } from "@/lib/event-edition";
 import { EmptyState } from "@/components/bidwave";
+import { LeaderboardBoard, type Entry } from "@/app/(public)/leaderboard/leaderboard-board";
 
 export const metadata: Metadata = { title: "Leaderboard" };
 export const dynamic = "force-dynamic";
 
-type Entry = { rank: number; team_name: string; score: number };
+/**
+ * Formatted here, on the server, with an explicit timezone as well as an
+ * explicit locale: the board is a client component, so a bare toLocaleString
+ * would render in UTC during SSR and in the viewer's zone after hydration —
+ * a guaranteed mismatch (the same class of bug already hit
+ * console-sales-log.tsx). The event is in Bengaluru, so IST is also simply
+ * the right thing for a public audience to read.
+ */
+function formatPublishedAt(value: string) {
+  return new Date(value).toLocaleString("en-IN", {
+    timeZone: "Asia/Kolkata",
+    hour12: true,
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 
 /**
  * LDB-03/PUB-04/PUB-07: rank, team name and current published cumulative
@@ -28,7 +46,7 @@ export default async function PublicLeaderboardPage() {
   const { data: snapshots } = edition
     ? await supabase
         .from("leaderboard_snapshots")
-        .select("kind, published_at, leaderboard_snapshot_entries(rank, team_name, score)")
+        .select("kind, published_at, covers_label, leaderboard_snapshot_entries(rank, team_name, score)")
         .eq("event_edition_id", edition.id)
         .in("kind", ["top_15", "final_top_10"])
         .is("hidden_at", null)
@@ -47,16 +65,22 @@ export default async function PublicLeaderboardPage() {
       </div>
 
       {finalTopTen && (
-        <LeaderboardTable
+        <LeaderboardBoard
           title="Final Results"
+          coversLabel={finalTopTen.covers_label}
+          publishedLabel={formatPublishedAt(finalTopTen.published_at)}
           entries={sortEntries(finalTopTen.leaderboard_snapshot_entries)}
-          emphasize
         />
       )}
 
       {topFifteen && (
-        <LeaderboardTable
-          title="Live Standings — Top 15"
+        // Not "Live Standings": this is a snapshot an admin publishes by
+        // hand, so calling it live promises an update cadence that does not
+        // exist. The covers_label carries what it actually reflects.
+        <LeaderboardBoard
+          title="Standings — Top 15"
+          coversLabel={topFifteen.covers_label}
+          publishedLabel={formatPublishedAt(topFifteen.published_at)}
           entries={sortEntries(topFifteen.leaderboard_snapshot_entries)}
         />
       )}
@@ -68,53 +92,5 @@ export default async function PublicLeaderboardPage() {
         />
       )}
     </div>
-  );
-}
-
-function LeaderboardTable({
-  title,
-  entries,
-  emphasize,
-}: {
-  title: string;
-  entries: Entry[];
-  emphasize?: boolean;
-}) {
-  if (entries.length === 0) return null;
-  return (
-    <section className="space-y-3">
-      <h2 className="font-heading text-sm font-semibold uppercase tracking-wide text-gold">
-        {title}
-      </h2>
-      <ol className="space-y-2">
-        {entries.map((e) => {
-          const top3 = e.rank <= 3;
-          return (
-            <li
-              key={e.rank}
-              className={
-                emphasize && top3
-                  ? "flex items-center justify-between rounded-lg border border-gold/30 bg-gold/5 px-4 py-3"
-                  : "flex items-center justify-between rounded-lg border border-border bg-card px-4 py-2"
-              }
-            >
-              <span className="flex items-center gap-3">
-                <span
-                  className={
-                    emphasize && top3
-                      ? "font-mono text-sm font-bold tabular-nums text-gold"
-                      : "font-mono text-sm tabular-nums text-ink-3"
-                  }
-                >
-                  {e.rank}
-                </span>
-                <span className="font-medium">{e.team_name}</span>
-              </span>
-              <span className="font-mono tabular-nums text-gold">{e.score}</span>
-            </li>
-          );
-        })}
-      </ol>
-    </section>
   );
 }

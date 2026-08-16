@@ -26,6 +26,7 @@ type Team = { id: string; name: string };
 type LiveSnapshot = {
   id: string;
   published_at: string;
+  covers_label: string | null;
   leaderboard_snapshot_entries: { rank: number; team_name: string; score: number }[];
 } | null;
 
@@ -45,6 +46,7 @@ export function LeaderboardPublisher({
   const [rows, setRows] = useState<{ teamId: string; score: string }[]>(
     Array.from({ length: entryLimit }, () => ({ teamId: "", score: "" })),
   );
+  const [coversLabel, setCoversLabel] = useState(live?.covers_label ?? "");
   const queryClient = useQueryClient();
 
   return (
@@ -68,7 +70,10 @@ export function LeaderboardPublisher({
 
       {live ? (
         <div className="space-y-1 text-sm">
-          <p className="text-xs text-ink-3">Published {formatTimestamp(live.published_at)}</p>
+          <p className="text-xs text-ink-3">
+            {live.covers_label ? `${live.covers_label} · ` : ""}
+            Published {formatTimestamp(live.published_at)}
+          </p>
           <ol className="list-decimal space-y-0.5 pl-5">
             {live.leaderboard_snapshot_entries
               .sort((a, b) => a.rank - b.rank)
@@ -87,6 +92,21 @@ export function LeaderboardPublisher({
         <p className="text-xs font-semibold uppercase tracking-wide text-ink-2">
           Publish a new ranked list ({entryLimit} entries, admin-ordered)
         </p>
+        <div className="space-y-1">
+          {/* Shown publicly under the heading. Without it the public page can
+              only say "Standings" and a viewer can't tell which rounds are
+              counted — the whole reason covers_label exists. */}
+          <label htmlFor={`covers-${kind}`} className="text-xs text-ink-2">
+            What this covers — shown to the public
+          </label>
+          <Input
+            id={`covers-${kind}`}
+            className="w-full max-w-sm"
+            placeholder="After Rounds 1 + 2"
+            value={coversLabel}
+            onChange={(e) => setCoversLabel(e.target.value)}
+          />
+        </div>
         {rows.map((row, i) => (
           <div key={i} className="flex items-center gap-2">
             <span className="w-6 font-mono text-xs tabular-nums text-ink-3">{i + 1}</span>
@@ -127,7 +147,7 @@ export function LeaderboardPublisher({
                 team_name: teams.find((t) => t.id === r.teamId)?.name ?? "",
                 score: Number(r.score) || 0,
               }));
-            const result = await adminPublishLeaderboard(kind, entries, entryLimit);
+            const result = await adminPublishLeaderboard(kind, entries, entryLimit, coversLabel);
             if (result.error) {
               toast.error(result.error);
             } else {

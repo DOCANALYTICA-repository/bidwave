@@ -871,6 +871,7 @@ export type Database = {
           published_at: string;
           hidden_at: string | null;
           published_by: string | null;
+          covers_label: string | null;
         };
         Insert: {
           id?: string;
@@ -880,6 +881,7 @@ export type Database = {
           published_at?: string;
           hidden_at?: string | null;
           published_by?: string | null;
+          covers_label?: string | null;
         };
         Update: {
           id?: string;
@@ -889,6 +891,7 @@ export type Database = {
           published_at?: string;
           hidden_at?: string | null;
           published_by?: string | null;
+          covers_label?: string | null;
         };
         Relationships: [
           {
@@ -2369,6 +2372,7 @@ export type Database = {
           p_entries: Json;
           p_entry_limit: number;
           p_admin_id: string;
+          p_covers_label?: string | null;
         };
         Returns: string;
       };

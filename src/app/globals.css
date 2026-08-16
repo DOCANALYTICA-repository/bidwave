@@ -64,6 +64,9 @@
   --color-ink-3: var(--ink-3);
   --color-sold: var(--sold);
   --color-unsold: var(--unsold);
+  --color-podium-1: var(--podium-1);
+  --color-podium-2: var(--podium-2);
+  --color-podium-3: var(--podium-3);
   --color-live: var(--live);
   --color-analytics: var(--analytics);
   --color-turf: var(--turf);
@@ -94,6 +97,13 @@
   /* Text */
   --ink-2: #a8a8ae;
   --ink-3: #6e6e76;
+
+  /* Podium — rank 1/2/3 on the public leaderboard. Gold is the brand gold
+     so #1 reads as "the" Bidwave colour; silver and bronze are tuned to sit
+     on surface-0 without competing with it. */
+  --podium-1: var(--gold);
+  --podium-2: #cfd3dc;
+  --podium-3: #cf8b52;
 
   /* Semantic — broadcast state colours */
   --sold: #3fbf7f;
@@ -134,6 +144,35 @@
   --sidebar-accent-foreground: var(--foreground);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: var(--gold);
+}
+
+/* Public leaderboard reveal (LDB-03). Deliberately CSS, not `motion`: the
+   board is the one public surface where the content must survive JS failing,
+   and a JS enter-animation ships `opacity: 0` in the SSR HTML — if hydration
+   never lands, the standings are permanently invisible. CSS keyframes also
+   keep running when the tab is backgrounded, where rAF-driven animation is
+   frozen. --lb-i is the row's distance from the bottom, so the last row
+   starts first and rank 1 lands last. */
+@keyframes lb-rise {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.lb-row {
+  animation: lb-rise 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: calc(var(--lb-i, 0) * 60ms);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lb-row {
+    animation: none;
+  }
 }
 
 @layer base {
