@@ -35,7 +35,15 @@ export async function isSharedLinkUnviewable(url: string): Promise<boolean> {
     // won't confirm the object exists to a stranger), and for one that was
     // deleted or whose link was mistyped. All three are the same thing
     // from a judge's seat — the link does not open.
-    if ([401, 403, 404, 410].includes(response.status)) return true;
+    //
+    // 401/403 are deliberately *not* on this list. They are what Google
+    // and Dropbox return to an unfamiliar datacenter IP under rate
+    // limiting as well as to a genuinely private file, and a serverless
+    // function's egress address is exactly that. Blocking on an ambiguous
+    // status would turn a busy submission window into a wall of teams who
+    // cannot submit a link that opens perfectly well in a browser — a far
+    // worse failure than a judge having to ask one team to re-share.
+    if ([404, 410].includes(response.status)) return true;
 
     // A sign-in wall is a 200 serving the login page, so the give-away is
     // the final URL, not the status. Verified against a Google URL that
