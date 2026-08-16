@@ -191,6 +191,7 @@ export default async function AdminRoundWorkspacePage({ params }: { params: Prom
         submissions={(submissions ?? []) as never}
         scores={(scores ?? []) as never}
         criterionValuesByTeam={criterionValuesByTeam}
+        rubricTotalMode={round.rubric_total_mode}
         quizQuestions={quizQuestions}
         quizAttempts={quizAttempts}
         policy={{

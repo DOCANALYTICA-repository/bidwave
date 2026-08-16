@@ -20,6 +20,27 @@ import { adminDeleteMaterial, adminDeleteRubricCriterion, adminPublishScoresForR
 type Team = { id: string; name: string };
 type Material = { id: string; title: string; kind: string; url: string | null; body: string | null; public_release: boolean };
 type Criterion = { id: string; label: string; max_value: number; weight: number };
+type RubricTotalMode = "weighted_sum" | "weighted_percent";
+
+/**
+ * What a perfect score on this rubric adds up to, under the round's total
+ * mode — the same arithmetic admin_save_score() runs server-side. In
+ * `weighted_sum` a criterion contributes `value * weight`, so setting weight
+ * equal to max_value (a natural reading of "weight" as "points") squares its
+ * contribution; in `weighted_percent` it contributes `value/max * weight`.
+ * Displaying the result is what makes that mistake visible before a round is
+ * scored rather than after.
+ */
+function rubricMaxTotal(criteria: Criterion[], mode: RubricTotalMode) {
+  return criteria.reduce(
+    (sum, c) => sum + (mode === "weighted_percent" ? c.weight : c.max_value * c.weight),
+    0,
+  );
+}
+
+function criterionMaxContribution(c: Criterion, mode: RubricTotalMode) {
+  return mode === "weighted_percent" ? c.weight : c.max_value * c.weight;
+}
 type Submission = {
   team_id: string;
   status: string;
@@ -71,6 +92,7 @@ export function RoundWorkspace({
   submissions,
   scores,
   criterionValuesByTeam,
+  rubricTotalMode,
   quizQuestions,
   quizAttempts,
   policy,
@@ -85,6 +107,7 @@ export function RoundWorkspace({
   scores: Score[];
   /** team_id -> criterion_id -> saved rubric value; see page.tsx. */
   criterionValuesByTeam: Record<string, Record<string, number>>;
+  rubricTotalMode: RubricTotalMode;
   quizQuestions: QuizQuestion[];
   quizAttempts: QuizAttempt[];
   policy: RoundPolicy;
@@ -93,6 +116,12 @@ export function RoundWorkspace({
   const submissionByTeam = new Map(submissions.map((s) => [s.team_id, s]));
   const scoreByTeam = new Map(scores.map((s) => [s.team_id, s]));
   const unpublishedCount = scores.filter((s) => !s.published).length;
+  const maxTotal = rubricMaxTotal(criteria, rubricTotalMode);
+  // weight is a multiplier, so weight == max_value squares the criterion.
+  const weightsLookLikePoints =
+    rubricTotalMode === "weighted_sum" &&
+    criteria.length > 0 &&
+    criteria.every((c) => c.weight === c.max_value && c.weight !== 1);
 
   return (
     <Tabs defaultValue="materials">
@@ -134,11 +163,30 @@ export function RoundWorkspace({
 
       {kind !== "quiz" && kind !== "auction" && (
       <TabsContent value="rubric" className="space-y-3 pt-4">
+        {criteria.length > 0 && (
+          <div className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm">
+            <p>
+              A perfect score on this rubric totals{" "}
+              <span className="font-medium">{maxTotal}</span>{" "}
+              <span className="text-xs text-ink-3">({rubricTotalMode.replace("_", " ")})</span>
+            </p>
+            {weightsLookLikePoints && (
+              <p className="mt-1 text-xs text-gold">
+                Every criterion&apos;s weight equals its max value. Weight is a multiplier, not a
+                point value — each criterion is scoring max × weight rather than max. For a rubric
+                out of {criteria.reduce((s, c) => s + c.max_value, 0)}, set every weight to 1.
+              </p>
+            )}
+          </div>
+        )}
         <ul className="space-y-2">
           {criteria.map((c) => (
             <li key={c.id} className="flex items-center justify-between rounded-lg border border-border bg-card px-3 py-2 text-sm">
               <span>
                 {c.label} · max {c.max_value} · weight {c.weight}
+                <span className="ml-2 text-xs text-ink-3">
+                  → up to {criterionMaxContribution(c, rubricTotalMode)} pts
+                </span>
               </span>
               <Button
                 size="sm"
@@ -241,7 +289,9 @@ export function RoundWorkspace({
             <thead>
               <tr className="bg-surface-2">
                 <th className="px-3 py-2 text-xs font-semibold uppercase text-ink-2">Team</th>
-                <th className="px-3 py-2 text-xs font-semibold uppercase text-ink-2">Score</th>
+                <th className="px-3 py-2 text-xs font-semibold uppercase text-ink-2">
+                  Score{criteria.length > 0 && <span className="normal-case text-ink-3"> — out of {maxTotal}</span>}
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -258,6 +308,7 @@ export function RoundWorkspace({
                     criteria={criteria.map((c) => ({ id: c.id, label: c.label, max_value: c.max_value }))}
                     existing={score ?? null}
                     existingCriterionValues={criterionValuesByTeam[t.id] ?? {}}
+                    rubricMaxTotal={criteria.length > 0 ? maxTotal : null}
                   />
                 );
               })}

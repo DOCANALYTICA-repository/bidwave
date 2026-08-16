@@ -26,6 +26,7 @@ export function ScoreRow({
   criteria,
   existing,
   existingCriterionValues,
+  rubricMaxTotal,
 }: {
   roundId: string;
   teamId: string;
@@ -35,6 +36,8 @@ export function ScoreRow({
   existing: ExistingScore;
   /** criterion_id -> saved value, so an already-scored team shows its score. */
   existingCriterionValues: Record<string, number>;
+  /** What a perfect rubric score totals, or null for a round with no rubric. */
+  rubricMaxTotal: number | null;
 }) {
   const savedCriterionValues = () =>
     Object.fromEntries(Object.entries(existingCriterionValues).map(([k, v]) => [k, String(v)]));
@@ -72,6 +75,14 @@ export function ScoreRow({
           noValidate
           action={(fd) => {
             if (hasCriteria) {
+              // Every criterion is written on save, so a blank one is stored
+              // as 0 — silently, and indistinguishably from a real zero.
+              // Make the admin state the zero rather than inferring it.
+              const blank = criteria.find((c) => (criterionValues[c.id] ?? "").trim() === "");
+              if (blank) {
+                setValidationError(`${blank.label}: enter a value (use 0 if not scored).`);
+                return;
+              }
               const overMax = criteria.find((c) => {
                 const raw = criterionValues[c.id];
                 const value = raw ? Number(raw) : 0;
@@ -87,6 +98,9 @@ export function ScoreRow({
             fd.set("teamId", teamId);
             fd.set("expectedUpdatedAt", existing?.updated_at ?? "");
             fd.set("total", total || "0");
+            // Without this scores.max_total stays null for every rubric round,
+            // so nothing downstream can show a score against what it's out of.
+            if (rubricMaxTotal != null) fd.set("maxTotal", String(rubricMaxTotal));
             if (hasCriteria) {
               fd.set(
                 "criterionValues",
