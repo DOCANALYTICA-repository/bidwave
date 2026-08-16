@@ -20,6 +20,7 @@
     "seed:demo": "node scripts/seed-demo.cjs",
     "unseed:demo": "node scripts/unseed-demo.cjs",
     "cleanup:test-residue": "node scripts/cleanup-test-residue.cjs",
+    "storage:reclaim": "node scripts/reclaim-storage.cjs",
     "load-test:registration": "node scripts/load-test-registration.cjs",
     "load-test:quiz": "node scripts/load-test-quiz.cjs"
   },
