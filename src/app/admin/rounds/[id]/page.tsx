@@ -35,6 +35,24 @@ export default async function AdminRoundWorkspacePage({ params }: { params: Prom
       supabase.from("scores").select("*").eq("round_id", id),
     ]);
 
+  // Saved rubric values. Without these the Scores tab renders empty inputs for
+  // every rubric round even when scores exist — the totals are in `scores` and
+  // the per-criterion values in `score_criterion_values`, and neither was ever
+  // fetched into the workspace, so a saved score looked lost.
+  const criterionValuesByTeam: Record<string, Record<string, number>> = {};
+  if ((criteria ?? []).length > 0 && (scores ?? []).length > 0) {
+    const scoreIdToTeam = new Map((scores ?? []).map((s) => [s.id, s.team_id]));
+    const { data: values } = await supabase
+      .from("score_criterion_values")
+      .select("score_id, criterion_id, value")
+      .in("score_id", [...scoreIdToTeam.keys()]);
+    for (const v of values ?? []) {
+      const teamId = scoreIdToTeam.get(v.score_id);
+      if (!teamId) continue;
+      (criterionValuesByTeam[teamId] ??= {})[v.criterion_id] = Number(v.value);
+    }
+  }
+
   let quizQuestions: {
     id: string;
     position: number;
@@ -172,6 +190,7 @@ export default async function AdminRoundWorkspacePage({ params }: { params: Prom
         criteria={criteria ?? []}
         submissions={(submissions ?? []) as never}
         scores={(scores ?? []) as never}
+        criterionValuesByTeam={criterionValuesByTeam}
         quizQuestions={quizQuestions}
         quizAttempts={quizAttempts}
         policy={{

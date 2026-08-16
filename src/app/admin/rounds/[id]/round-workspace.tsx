@@ -70,6 +70,7 @@ export function RoundWorkspace({
   criteria,
   submissions,
   scores,
+  criterionValuesByTeam,
   quizQuestions,
   quizAttempts,
   policy,
@@ -82,6 +83,8 @@ export function RoundWorkspace({
   criteria: Criterion[];
   submissions: Submission[];
   scores: Score[];
+  /** team_id -> criterion_id -> saved rubric value; see page.tsx. */
+  criterionValuesByTeam: Record<string, Record<string, number>>;
   quizQuestions: QuizQuestion[];
   quizAttempts: QuizAttempt[];
   policy: RoundPolicy;
@@ -254,6 +257,7 @@ export function RoundWorkspace({
                     submissionStatus={submission?.status}
                     criteria={criteria.map((c) => ({ id: c.id, label: c.label, max_value: c.max_value }))}
                     existing={score ?? null}
+                    existingCriterionValues={criterionValuesByTeam[t.id] ?? {}}
                   />
                 );
               })}

@@ -25,6 +25,7 @@ export function ScoreRow({
   submissionStatus,
   criteria,
   existing,
+  existingCriterionValues,
 }: {
   roundId: string;
   teamId: string;
@@ -32,9 +33,24 @@ export function ScoreRow({
   submissionStatus?: string;
   criteria: Criterion[];
   existing: ExistingScore;
+  /** criterion_id -> saved value, so an already-scored team shows its score. */
+  existingCriterionValues: Record<string, number>;
 }) {
-  const [criterionValues, setCriterionValues] = useState<Record<string, string>>({});
+  const savedCriterionValues = () =>
+    Object.fromEntries(Object.entries(existingCriterionValues).map(([k, v]) => [k, String(v)]));
+  const [criterionValues, setCriterionValues] = useState<Record<string, string>>(savedCriterionValues);
   const [total, setTotal] = useState(existing?.total?.toString() ?? "");
+
+  // Re-seed the inputs whenever the server sends a newer score for this team
+  // (after a save the page revalidates, but component state would otherwise
+  // keep whatever was typed — or stay empty on first paint of a saved score).
+  const savedAt = existing?.updated_at ?? "";
+  const [seededAt, setSeededAt] = useState(savedAt);
+  if (savedAt !== seededAt) {
+    setSeededAt(savedAt);
+    setCriterionValues(savedCriterionValues());
+    setTotal(existing?.total?.toString() ?? "");
+  }
   const [validationError, setValidationError] = useState<string | null>(null);
   const [state, formAction, isPending] = useActionState(adminSaveScore, roundActionInitialState);
 
@@ -91,7 +107,7 @@ export function ScoreRow({
                   className="w-20"
                   type="number"
                   step="0.01"
-                  defaultValue={criterionValues[c.id]}
+                  value={criterionValues[c.id] ?? ""}
                   onChange={(e) => setCriterionValues((v) => ({ ...v, [c.id]: e.target.value }))}
                 />
               </div>
@@ -108,6 +124,20 @@ export function ScoreRow({
           <Button type="submit" size="sm" variant="outline" disabled={isPending}>
             {isPending ? "Saving…" : "Save"}
           </Button>
+          {existing && (
+            // In rubric mode the total is computed server-side from the
+            // weights, so the inputs alone never show what was actually saved.
+            <span className="text-xs text-ink-2">
+              saved:{" "}
+              <span className="font-medium text-ink-1">
+                {existing.total}
+                {existing.max_total != null && ` / ${existing.max_total}`}
+              </span>
+              <span className={existing.published ? "ml-2 text-ink-3" : "ml-2 text-gold"}>
+                {existing.published ? "published" : "unpublished"}
+              </span>
+            </span>
+          )}
           {existing && (
             <Button
               type="button"
