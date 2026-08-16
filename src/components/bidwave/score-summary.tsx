@@ -21,7 +21,7 @@
  * a padded one ("39.00") is exactly the kind of mismatch that reads as a
  * bug to someone already suspicious of their score.
  */
-function formatPoints(value: number) {
+export function formatPoints(value: number) {
   return Number(value.toFixed(2)).toString();
 }
 

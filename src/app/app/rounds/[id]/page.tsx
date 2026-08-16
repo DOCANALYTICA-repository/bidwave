@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
-import { StatusPill, BackLink, ScoreSummary } from "@/components/bidwave";
+import { StatusPill, BackLink, ScoreSummary, formatPoints } from "@/components/bidwave";
 import { classroomStatus } from "@/lib/round-status-ui";
 import { SubmissionForm } from "@/app/app/rounds/[id]/submission-form";
 
@@ -275,16 +275,40 @@ export default async function TeamRoundPage({ params }: { params: Promise<{ id: 
             percent={quizAttempt?.percent ?? null}
           />
           {criteria && criteria.length > 0 && criterionValueById.size > 0 && (
-            <ul className="space-y-1 border-t border-border pt-2 text-sm text-ink-2">
-              {criteria.map((c) => (
-                <li key={c.id} className="flex justify-between">
-                  <span>{c.label}</span>
-                  <span className="font-mono tabular-nums">
-                    {criterionValueById.get(c.id) ?? "—"} / {c.max_value}
-                  </span>
-                </li>
-              ))}
-            </ul>
+            // The breakdown used to be a bare list under the total, with no
+            // heading and no statement of how the two relate — which is what
+            // makes a score arguable. formatPoints is shared with
+            // ScoreSummary so "11" can't appear next to "15.00" here.
+            <div className="space-y-2 border-t border-border pt-3">
+              <h3 className="font-heading text-xs font-semibold uppercase tracking-wide text-ink-3">
+                Rubric breakdown
+              </h3>
+              <ul className="space-y-1 text-sm text-ink-2">
+                {criteria.map((c) => {
+                  const value = criterionValueById.get(c.id);
+                  return (
+                    <li key={c.id} className="flex justify-between gap-4">
+                      <span>{c.label}</span>
+                      <span className="shrink-0 font-mono tabular-nums">
+                        {value == null ? "—" : formatPoints(Number(value))} /{" "}
+                        {formatPoints(Number(c.max_value))}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+              <p className="flex justify-between gap-4 border-t border-border pt-2 text-sm font-medium">
+                <span>Total</span>
+                <span className="shrink-0 font-mono tabular-nums">
+                  {formatPoints(score.total)}
+                  {score.max_total != null && ` / ${formatPoints(score.max_total)}`}
+                </span>
+              </p>
+              <p className="text-xs leading-relaxed text-ink-3">
+                Your total is the sum of the criteria above. Each criterion is marked out of its own
+                maximum.
+              </p>
+            </div>
           )}
           {score.notes && <p className="text-sm text-ink-2">{score.notes}</p>}
         </div>
