@@ -14,15 +14,18 @@ export default async function AdminRoundWorkspacePage({ params }: { params: Prom
   const { data: round } = await supabase.from("rounds_with_status").select("*").eq("id", id).maybeSingle();
   if (!round) notFound();
 
-  const [{ data: teams }, { data: materials }, { data: criteria }, { data: submissions }, { data: scores }] =
+  const [{ data: allTeams }, { data: materials }, { data: criteria }, { data: submissions }, { data: scores }] =
     await Promise.all([
       // Scoped to the round's own edition — admin RLS returns every team in
       // the project, so an unfiltered list would mix other editions' teams
-      // into this round's scoring UI.
+      // into this round's scoring UI. Disqualified teams are excluded here
+      // too; the qualification-stage filter (below) needs the round's own
+      // record first, so it's applied after this fetch.
       supabase
         .from("teams")
         .select("id, name")
         .eq("event_edition_id", round.event_edition_id)
+        .eq("status", "active")
         .order("name"),
       supabase.from("round_materials").select("*").eq("round_id", id).order("position"),
       supabase.from("rubric_criteria").select("*").eq("round_id", id).order("position"),
@@ -34,6 +37,22 @@ export default async function AdminRoundWorkspacePage({ params }: { params: Prom
         .eq("round_id", id),
       supabase.from("scores").select("*").eq("round_id", id),
     ]);
+
+  // A team otherwise active can still be ineligible for THIS round if it
+  // hasn't qualified out of the round's required prior stage (mirrors
+  // team_meets_stage_requirement, the same check admin_save_score now
+  // enforces server-side — this is the display-side half so the scoring
+  // list doesn't even offer a team the RPC would reject).
+  let teams = allTeams ?? [];
+  if (round.requires_qualification_from_stage) {
+    const { data: qualified } = await supabase
+      .from("qualifications")
+      .select("team_id")
+      .eq("stage_id", round.requires_qualification_from_stage)
+      .eq("decision", "qualified");
+    const qualifiedIds = new Set((qualified ?? []).map((q) => q.team_id));
+    teams = teams.filter((t) => qualifiedIds.has(t.id));
+  }
 
   // Saved rubric values. Without these the Scores tab renders empty inputs for
   // every rubric round even when scores exist — the totals are in `scores` and
