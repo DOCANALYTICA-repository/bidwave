@@ -65,6 +65,7 @@ type Config = {
   stopped_at: string | null;
   visible_at: string | null;
   winner_count: number;
+  max_winners: number;
 } | null;
 
 type Attempt = { id: string; team_id: string; team_name: string; overall: number; success: boolean; winner_rank: number | null; server_ts: string };
@@ -118,7 +119,7 @@ export function SimulationAdmin({
         <div className="flex items-center justify-between rounded-xl border border-border bg-card p-4">
           <div className="text-sm">
             <p>
-              Winners so far: <span className="font-mono">{config.winner_count}</span> / 2
+              Winners so far: <span className="font-mono">{config.winner_count}</span> / {config.max_winners}
             </p>
             <p className="text-xs text-ink-3">
               {config.started_at ? `Started ${formatTimestamp(config.started_at)}` : "Not started"}
@@ -217,6 +218,17 @@ export function SimulationAdmin({
           <div className="space-y-1.5">
             <Label htmlFor="sim-cooldown">Submit cooldown (seconds)</Label>
             <Input id="sim-cooldown" name="submitCooldownSeconds" type="number" defaultValue={config?.submit_cooldown_seconds ?? 3} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="sim-max-winners">Max winners (1–4, capped by the 4 generated keys)</Label>
+            <Input
+              id="sim-max-winners"
+              name="maxWinners"
+              type="number"
+              min={1}
+              max={4}
+              defaultValue={config?.max_winners ?? 2}
+            />
           </div>
         </div>
 

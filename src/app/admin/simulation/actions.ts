@@ -50,7 +50,7 @@ export async function getSimulationData(eventEditionId: string): Promise<Simulat
   const { data: config } = await supabase
     .from("simulation_config")
     .select(
-      "id, event_edition_id, round_id, parameters, scoring, global_timer_seconds, submit_cooldown_seconds, started_at, stopped_at, visible_at, winner_count, defaults_overall, created_at, updated_at",
+      "id, event_edition_id, round_id, parameters, scoring, global_timer_seconds, submit_cooldown_seconds, started_at, stopped_at, visible_at, winner_count, max_winners, defaults_overall, created_at, updated_at",
     )
     .eq("event_edition_id", eventEditionId)
     .order("created_at", { ascending: false })
@@ -110,6 +110,8 @@ export async function adminSaveSimulationConfig(
   const expectedUpdatedAt = (formData.get("expectedUpdatedAt") as string) || null;
   const globalTimerSeconds = Number(formData.get("globalTimerSeconds") ?? 1500);
   const submitCooldownSeconds = Number(formData.get("submitCooldownSeconds") ?? 3);
+  const maxWinnersRaw = formData.get("maxWinners");
+  const maxWinners = maxWinnersRaw ? Number(maxWinnersRaw) : null;
 
   const answerKeyRaw = String(formData.get("answerKey") ?? "").trim();
 
@@ -161,6 +163,7 @@ export async function adminSaveSimulationConfig(
     p_answer_key: answerKey as never,
     p_global_timer_seconds: globalTimerSeconds,
     p_submit_cooldown_seconds: submitCooldownSeconds,
+    p_max_winners: maxWinners,
   });
 
   if (error) {

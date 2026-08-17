@@ -1316,6 +1316,7 @@ export type Database = {
           stopped_at: string | null;
           visible_at: string | null;
           winner_count: number;
+          max_winners: number;
           defaults_overall: number;
           created_at: string;
           updated_at: string;
@@ -1333,6 +1334,7 @@ export type Database = {
           stopped_at?: string | null;
           visible_at?: string | null;
           winner_count?: number;
+          max_winners?: number;
           defaults_overall: number;
           created_at?: string;
           updated_at?: string;
@@ -1350,6 +1352,7 @@ export type Database = {
           stopped_at?: string | null;
           visible_at?: string | null;
           winner_count?: number;
+          max_winners?: number;
           defaults_overall?: number;
           created_at?: string;
           updated_at?: string;
@@ -2532,6 +2535,7 @@ export type Database = {
           p_answer_key: Json;
           p_global_timer_seconds: number;
           p_submit_cooldown_seconds: number;
+          p_max_winners?: number | null;
         };
         Returns: string;
       };
