@@ -17,10 +17,10 @@ import {
 } from "@/app/admin/auction/console/actions";
 import { ConsoleLockBadge } from "@/app/admin/auction/console/console-lock-badge";
 import { useLiveBroadcast } from "@/lib/realtime/use-live-broadcast";
+import type { BiddingField } from "@/lib/auction/bidding-field";
 import type { Database } from "@/lib/supabase/types";
 
 type Player = Database["public"]["Tables"]["players"]["Row"];
-type TeamPurse = Database["public"]["Views"]["public_team_purses"]["Row"];
 type RuleSet = { min_squad_size: number; max_squad_size: number; max_overseas: number };
 type TeamRoster = { squadSize: number; overseasCount: number; roleCounts: Record<string, number>; poolCounts: Record<string, number> };
 
@@ -44,18 +44,19 @@ function humanizeViolation(v: unknown): string {
 export function ConsoleSaleEntry({
   eventEditionId,
   activePlayer,
-  teams,
+  biddingField,
   auctionEnded,
   ruleSet,
   rosterByTeam,
 }: {
   eventEditionId: string;
   activePlayer: Player | null;
-  teams: TeamPurse[];
+  biddingField: BiddingField;
   auctionEnded: boolean;
   ruleSet: RuleSet | null;
   rosterByTeam: Record<string, TeamRoster>;
 }) {
+  const teams = biddingField.teams;
   const router = useRouter();
   const { status } = useLiveBroadcast(eventEditionId, "auction", () => router.refresh());
   const [state, formAction, isPending] = useActionState(recordSale, saleActionInitialState);
@@ -90,6 +91,7 @@ export function ConsoleSaleEntry({
   return (
     <div className="space-y-4">
       <ReconnectBanner status={status} />
+      <BiddingFieldNotice field={biddingField} />
 
       {!activePlayer ? (
         <div className="rounded-xl border border-dashed border-border p-6 text-center text-ink-2">
@@ -117,20 +119,22 @@ export function ConsoleSaleEntry({
             <div className="space-y-1.5">
               <Label htmlFor="sale-team">Team</Label>
               <Select value={teamId} onValueChange={(v) => v && setTeamId(v)}>
-                <SelectTrigger id="sale-team" className="w-48">
+                <SelectTrigger id="sale-team" className="w-56">
                   {/* SelectValue's default rendering prints the raw `value` —
                       team_id here, not the label — since value and label
                       differ (unlike round-form-sheet.tsx's kind selector,
                       where they're the same string). The render-prop form
-                      looks the team back up to show its name instead. */}
-                  <SelectValue placeholder="Select team">
-                    {(value: string) => teams.find((t) => t.team_id === value)?.name ?? "Select team"}
+                      looks the team back up to show its franchise alias. */}
+                  <SelectValue placeholder="Select franchise">
+                    {(value: string) =>
+                      teams.find((t) => t.teamId === value)?.label ?? "Select franchise"
+                    }
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {teams.map((t) => (
-                    <SelectItem key={t.team_id} value={t.team_id ?? ""}>
-                      {t.name} — <Money value={t.purse_balance ?? 0} />
+                    <SelectItem key={t.teamId} value={t.teamId}>
+                      {t.label} — <Money value={t.purseBalance} />
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -204,6 +208,42 @@ export function ConsoleSaleEntry({
           End auction
         </Button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Says out loud when the selector is not showing what the auctioneer expects.
+ * Without this, "no franchises seated yet" and "these are the 12 franchises"
+ * look identical on screen — the selector just quietly lists registered team
+ * names, and the first sale gets called against the wrong label.
+ */
+function BiddingFieldNotice({ field }: { field: BiddingField }) {
+  const problems: string[] = [];
+
+  if (field.source === "unnarrowed") {
+    problems.push(
+      `No Rounds 3 + 4 qualification decisions and no franchises seated, so all ${field.teams.length} registered teams are listed. Record qualification in Stages, or seat franchises in Setup.`,
+    );
+  } else if (field.source === "franchise") {
+    problems.push(
+      "No Rounds 3 + 4 qualification decisions are recorded, so this list comes from the seated franchises. A sale will still be rejected for any team the stage has not qualified.",
+    );
+  }
+
+  if (field.missingAlias > 0) {
+    problems.push(
+      `${field.missingAlias} of ${field.teams.length} ${field.missingAlias === 1 ? "team is" : "teams are"} showing a registered name because no franchise identity is assigned. Assign them in Auction → Setup.`,
+    );
+  }
+
+  if (problems.length === 0) return null;
+
+  return (
+    <div className="space-y-1 rounded-lg border border-gold/40 bg-gold/5 px-4 py-3 text-xs text-ink-2">
+      {problems.map((p) => (
+        <p key={p}>{p}</p>
+      ))}
     </div>
   );
 }

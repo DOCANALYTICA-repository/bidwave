@@ -3,6 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { ConsoleSaleEntry } from "@/app/admin/auction/console/console-sale-entry";
 import { ConsoleSalesLog } from "@/app/admin/auction/console/console-sales-log";
 import { selectCurrentEdition } from "@/lib/event-edition";
+import { getSettingsForEdition } from "@/lib/supabase/settings";
+import { buildBiddingField, labelForTeam } from "@/lib/auction/bidding-field";
 
 export const metadata: Metadata = { title: "Auction Console" };
 export const dynamic = "force-dynamic";
@@ -16,7 +18,7 @@ export default async function AdminAuctionConsolePage() {
     return <div className="p-10 text-ink-2">No active event edition.</div>;
   }
 
-  const [{ data: state }, { data: teams }, { data: recentSales }, { data: ruleSet }, { data: soldPlayers }] =
+  const [{ data: state }, { data: teams }, { data: recentSales }, { data: ruleSet }, { data: soldPlayers }, settings] =
     await Promise.all([
       supabase.from("auction_state").select("*").eq("event_edition_id", edition.id).maybeSingle(),
       supabase.from("public_team_purses").select("*").eq("event_edition_id", edition.id).order("name"),
@@ -34,7 +36,39 @@ export default async function AdminAuctionConsolePage() {
         .select("current_team_id, role, pool, is_overseas")
         .eq("event_edition_id", edition.id)
         .eq("status", "sold"),
+      getSettingsForEdition(edition.id, ["auction_franchise_assignments"]),
     ]);
+
+  // The selector must offer exactly the teams record_sale will accept, under
+  // the names the room is using. record_sale gates on the *active rule set's*
+  // round (team_meets_stage_requirement(v_rule_set.round_id, …)), so the gate
+  // is resolved through the rule set rather than by looking up "the auction
+  // round" — the two coincide today but the rule set is the authority.
+  const { data: gateRound } = ruleSet?.round_id
+    ? await supabase
+        .from("rounds")
+        .select("requires_qualification_from_stage")
+        .eq("id", ruleSet.round_id)
+        .maybeSingle()
+    : { data: null };
+
+  const { data: quals } = gateRound?.requires_qualification_from_stage
+    ? await supabase
+        .from("qualifications")
+        .select("team_id")
+        .eq("stage_id", gateRound.requires_qualification_from_stage)
+        .eq("decision", "qualified")
+    : { data: [] as { team_id: string }[] };
+
+  const biddingField = buildBiddingField(
+    (teams ?? []).map((t) => ({
+      team_id: t.team_id as string,
+      name: t.name as string,
+      purse_balance: Number(t.purse_balance ?? 0),
+    })),
+    settings.auction_franchise_assignments ?? {},
+    new Set((quals ?? []).map((q) => q.team_id as string)),
+  );
 
   // A5: admin console had no visibility into a team's squad/overseas
   // constraints before attempting a sale — only a reactive violation dump
@@ -75,7 +109,15 @@ export default async function AdminAuctionConsolePage() {
     player_updated_at:
       (s.players as unknown as { full_name: string; updated_at: string } | null)?.updated_at ?? "",
     team_id: s.team_id,
-    team_name: (s.teams as unknown as { name: string } | null)?.name ?? "—",
+    // Alias-first here too: a log reading "Royal Mavericks" next to a selector
+    // reading "MUMBAI INDIANS" is the same misheard-sale hazard. Falls back to
+    // the joined registered name for a team no longer in the field (e.g. a
+    // reversed sale for a team since unseated).
+    team_name: labelForTeam(
+      s.team_id,
+      biddingField.teams,
+      (s.teams as unknown as { name: string } | null)?.name ?? "—",
+    ),
     amount: s.amount,
     sold_at: s.sold_at,
     reversed_at: s.reversed_at,
@@ -99,7 +141,7 @@ export default async function AdminAuctionConsolePage() {
       <ConsoleSaleEntry
         eventEditionId={edition.id}
         activePlayer={activePlayer ?? null}
-        teams={teams ?? []}
+        biddingField={biddingField}
         auctionEnded={!!state?.ended_at}
         ruleSet={
           ruleSet

@@ -31,19 +31,31 @@ export default async function AdminAuctionTrackerPage() {
   const { data: edition } = await selectCurrentEdition(supabase);
   if (!edition) return <div className="p-10 text-ink-2">No active event edition.</div>;
 
-  // Same gate as the sale engine and the analytics dashboard: who is in the
-  // auction is whoever qualified at the stage the auction round points to —
-  // never a hardcoded team count. See admin/auction/analytics/page.tsx.
-  const { data: auctionRound } = await supabase
-    .from("rounds")
-    .select("id, requires_qualification_from_stage")
+  // Who is in the auction is never a hardcoded team count — it is whoever
+  // qualified at the gate the sale engine enforces. record_sale resolves that
+  // gate through the *active rule set's* round
+  // (team_meets_stage_requirement(v_rule_set.round_id, …)), so this does too:
+  // keying off `rounds.kind = 'auction'` instead would break the moment a
+  // second auction round exists in one edition, since maybeSingle() throws on
+  // multiple rows.
+  const { data: activeRuleSet } = await supabase
+    .from("auction_rule_sets")
+    .select("*")
     .eq("event_edition_id", edition.id)
-    .eq("kind", "auction")
+    .eq("is_active", true)
     .maybeSingle();
 
-  const gateStageId = auctionRound?.requires_qualification_from_stage ?? null;
+  const { data: gateRound } = activeRuleSet?.round_id
+    ? await supabase
+        .from("rounds")
+        .select("requires_qualification_from_stage")
+        .eq("id", activeRuleSet.round_id)
+        .maybeSingle()
+    : { data: null };
 
-  const [{ data: playerRows }, { data: purses }, { data: ledgerRows }, settings, { data: ruleSet }, { data: quals }] =
+  const gateStageId = gateRound?.requires_qualification_from_stage ?? null;
+
+  const [{ data: playerRows }, { data: purses }, { data: ledgerRows }, settings, { data: quals }] =
     await Promise.all([
       supabase
         .from("players")
@@ -57,12 +69,6 @@ export default async function AdminAuctionTrackerPage() {
         .select("team_id, entry_kind, amount")
         .eq("event_edition_id", edition.id),
       getSettingsForEdition(edition.id, ["auction_franchise_assignments"]),
-      supabase
-        .from("auction_rule_sets")
-        .select("*")
-        .eq("event_edition_id", edition.id)
-        .eq("is_active", true)
-        .maybeSingle(),
       gateStageId
         ? supabase
             .from("qualifications")
@@ -77,9 +83,9 @@ export default async function AdminAuctionTrackerPage() {
   const franchises = settings.auction_franchise_assignments ?? {};
 
   const limits = {
-    minSquadSize: ruleSet?.min_squad_size ?? 0,
-    maxSquadSize: ruleSet?.max_squad_size ?? 0,
-    maxOverseas: ruleSet?.max_overseas ?? 0,
+    minSquadSize: activeRuleSet?.min_squad_size ?? 0,
+    maxSquadSize: activeRuleSet?.max_squad_size ?? 0,
+    maxOverseas: activeRuleSet?.max_overseas ?? 0,
   };
 
   const qualifiedRank = new Map(
