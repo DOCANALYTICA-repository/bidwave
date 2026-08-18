@@ -5,6 +5,8 @@ import { selectCurrentEdition } from "@/lib/event-edition";
 import { getSettingsForEdition } from "@/lib/supabase/settings";
 import { TrackerRealtime } from "@/app/admin/auction/tracker/tracker-realtime";
 import { TeamCard } from "@/app/admin/auction/tracker/team-card";
+import { SquadBoard } from "@/app/admin/auction/tracker/squad-board";
+import { formatCrore } from "@/lib/auction/format";
 import {
   buildTeamTrackers,
   cheapestRemainingBase,
@@ -118,67 +120,91 @@ export default async function AdminAuctionTrackerPage() {
   const roomRemaining = trackers.reduce((a, t) => a + t.purse.balance, 0);
   const rostered = trackers.reduce((a, t) => a + t.squadSize, 0);
 
-  return (
-    <div className="mx-auto w-full max-w-6xl space-y-8 px-6 py-10">
-      <TrackerRealtime eventEditionId={edition.id} />
-
-      <div className="space-y-1">
-        <h1 className="font-display text-2xl">Auction — Live Tracker</h1>
-        <p className="text-sm text-ink-2">
-          Every team, their squad, what each player cost and what purse is left. Updates live as
-          sales are recorded.
-        </p>
-      </div>
-
-      {trackers.length === 0 ? (
+  if (trackers.length === 0) {
+    return (
+      <div className="mx-auto w-full max-w-6xl px-6 py-10">
+        <TrackerRealtime eventEditionId={edition.id} />
         <EmptyState
           title="No bidding teams yet"
           description="Record Rounds 3 + 4 qualification decisions in Stages to seat the auction field."
         />
-      ) : (
-        <>
-          <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <StatTile
-              label="Teams bidding"
-              value={trackers.length}
-              hint={gateResolved ? "Qualified field" : "Gate undecided — all teams"}
-            />
-            <StatTile
-              label="Purse remaining"
-              value={<Money value={roomRemaining} />}
-              tone="gold"
-              hint={
-                <>
-                  of <Money value={roomFunded} className="text-xs" /> funded
-                </>
-              }
-            />
-            <StatTile
-              label="Committed"
-              value={<Money value={pulse.totalSpend} />}
-              hint={`${rostered} player${rostered === 1 ? "" : "s"} rostered`}
-            />
-            <StatTile
-              label="Lots left"
-              value={pulse.lotsRemaining}
-              hint={`${pulse.lotsSold} sold · ${pulse.lotsUnsold} unsold`}
-            />
-          </section>
+      </div>
+    );
+  }
 
-          {!gateResolved && (
-            <div className="rounded-lg border border-dashed border-border px-4 py-3 text-xs text-ink-2">
-              No team is marked qualified at the auction&rsquo;s gating stage yet, so every
-              registered team is listed.
-            </div>
-          )}
+  return (
+    <div>
+      <TrackerRealtime eventEditionId={edition.id} />
 
-          <div className="space-y-5">
-            {trackers.map((t) => (
-              <TeamCard key={t.teamId} team={t} minSquadSize={limits.minSquadSize} />
-            ))}
+      {/* ------------------------------------------------------------------
+          The board: one laptop screen, six franchises across, nothing but
+          squad, prices and purse left. Full-bleed rather than max-w-6xl —
+          six columns need the width, and the sidebar already takes 224px.
+          ------------------------------------------------------------------ */}
+      <section className="px-6 pt-5">
+        <div className="mb-2.5 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+          <h1 className="font-display text-xl">Auction — Live Tracker</h1>
+          <p className="font-mono text-xs text-ink-3">
+            {trackers.length} teams · {pulse.lotsSold} sold · {formatCrore(pulse.totalSpend)}{" "}
+            committed · {formatCrore(roomRemaining)} left · {pulse.lotsRemaining} lots to come
+          </p>
+        </div>
+
+        <SquadBoard teams={trackers} />
+      </section>
+
+      {/* ------------------------------------------------------------------
+          Everything else, below the fold by design.
+          ------------------------------------------------------------------ */}
+      <div className="mx-auto w-full max-w-6xl space-y-8 px-6 pb-10 pt-12">
+        <div className="space-y-1 border-t border-border pt-8">
+          <h2 className="font-display text-lg">Full detail</h2>
+          <p className="text-sm text-ink-2">
+            Room totals, then every squad with base price, price paid and the multiple over base.
+          </p>
+        </div>
+
+        <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatTile
+            label="Teams bidding"
+            value={trackers.length}
+            hint={gateResolved ? "Qualified field" : "Gate undecided — all teams"}
+          />
+          <StatTile
+            label="Purse remaining"
+            value={<Money value={roomRemaining} />}
+            tone="gold"
+            hint={
+              <>
+                of <Money value={roomFunded} className="text-xs" /> funded
+              </>
+            }
+          />
+          <StatTile
+            label="Committed"
+            value={<Money value={pulse.totalSpend} />}
+            hint={`${rostered} player${rostered === 1 ? "" : "s"} rostered`}
+          />
+          <StatTile
+            label="Lots left"
+            value={pulse.lotsRemaining}
+            hint={`${pulse.lotsSold} sold · ${pulse.lotsUnsold} unsold`}
+          />
+        </section>
+
+        {!gateResolved && (
+          <div className="rounded-lg border border-dashed border-border px-4 py-3 text-xs text-ink-2">
+            No team is marked qualified at the auction&rsquo;s gating stage yet, so every registered
+            team is listed.
           </div>
-        </>
-      )}
+        )}
+
+        <div className="space-y-5">
+          {trackers.map((t) => (
+            <TeamCard key={t.teamId} team={t} minSquadSize={limits.minSquadSize} />
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
