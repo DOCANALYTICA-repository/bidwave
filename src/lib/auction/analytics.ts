@@ -230,3 +230,182 @@ export function teamsAtRisk(standings: TeamStanding[], averagePrice: number | nu
     (s) => s.slotsToMinimum > 0 && s.balance < s.slotsToMinimum * averagePrice,
   );
 }
+
+// ---------------------------------------------------------------------------
+// Live tracker — per-team roster detail, not just the aggregates above.
+//
+// The standings table answers "who is winning the room"; the tracker answers
+// "what exactly does this team own, and what can it still afford". Both read
+// the same PlayerRow[] the page already fetched, so they cannot disagree.
+// ---------------------------------------------------------------------------
+
+export type LedgerRow = { team_id: string; entry_kind: string; amount: number };
+
+/**
+ * Where a team's purse came from and where it went. Principle #4: the ledger
+ * is the only source of truth for money, so this is derived from the entries
+ * rather than from a balance column — which also means the funded total keeps
+ * reading correctly after a mid-event correction is posted as an `adjustment`.
+ *
+ * `amount` is signed at rest (purchase/analytics negative, start/sim_bonus/
+ * reversal positive, adjustment either), so spends are negated back to
+ * positive magnitudes for display and `balance` is simply the running sum.
+ */
+export type PurseBreakdown = {
+  /** start + sim_bonus + adjustment — everything credited as spendable purse. */
+  funded: number;
+  /** Net paid for players: purchases less whatever reversals gave back. */
+  playerSpend: number;
+  /** Purse burned unlocking the paid analytics module. */
+  analyticsSpend: number;
+  /** funded − playerSpend − analyticsSpend. Mirrors public_team_purses. */
+  balance: number;
+};
+
+const FUNDING_KINDS = new Set(["start", "sim_bonus", "adjustment"]);
+const PLAYER_SPEND_KINDS = new Set(["purchase", "reversal"]);
+
+export function emptyPurse(): PurseBreakdown {
+  return { funded: 0, playerSpend: 0, analyticsSpend: 0, balance: 0 };
+}
+
+export function summarisePurseLedger(rows: LedgerRow[]): Record<string, PurseBreakdown> {
+  const out: Record<string, PurseBreakdown> = {};
+  for (const row of rows) {
+    const p = (out[row.team_id] ??= emptyPurse());
+    const amount = Number(row.amount ?? 0);
+    if (FUNDING_KINDS.has(row.entry_kind)) p.funded += amount;
+    else if (PLAYER_SPEND_KINDS.has(row.entry_kind)) p.playerSpend -= amount;
+    else if (row.entry_kind === "analytics") p.analyticsSpend -= amount;
+    p.balance += amount;
+  }
+  return out;
+}
+
+export type SquadPlayer = {
+  id: string;
+  name: string;
+  role: string;
+  pool: string;
+  isOverseas: boolean;
+  basePrice: number;
+  salePrice: number;
+  soldAt: string | null;
+  /** Paid ÷ base. 1 = went at base, 2 = doubled. null when base is 0. */
+  realisation: number | null;
+};
+
+/**
+ * Every sold lot, bucketed by owning team, most expensive first — the order
+ * an admin scans a squad in when asked "what did they spend it on".
+ */
+export function buildSquads(players: PlayerRow[]): Record<string, SquadPlayer[]> {
+  const out: Record<string, SquadPlayer[]> = {};
+  for (const p of players) {
+    if (p.status !== "sold" || !p.current_team_id) continue;
+    const basePrice = Number(p.base_price ?? 0);
+    const salePrice = Number(p.sale_price ?? 0);
+    (out[p.current_team_id] ??= []).push({
+      id: p.id,
+      name: p.full_name,
+      role: p.role,
+      pool: p.pool,
+      isOverseas: p.is_overseas,
+      basePrice,
+      salePrice,
+      soldAt: p.sold_at,
+      realisation: basePrice > 0 ? salePrice / basePrice : null,
+    });
+  }
+  for (const squad of Object.values(out)) squad.sort((a, b) => b.salePrice - a.salePrice);
+  return out;
+}
+
+export type SquadLimits = {
+  minSquadSize: number;
+  maxSquadSize: number;
+  maxOverseas: number;
+};
+
+export type TeamTracker = {
+  teamId: string;
+  name: string;
+  franchise: string | null;
+  /** Qualifying rank at the auction's gating stage; null if unranked. */
+  rank: number | null;
+  purse: PurseBreakdown;
+  squad: SquadPlayer[];
+  squadSize: number;
+  overseasCount: number;
+  /** How many more they must buy to be legal, and may buy before they are full. */
+  slotsToMinimum: number;
+  slotsToMaximum: number;
+  averagePrice: number | null;
+  overseasRemaining: number;
+  /**
+   * The most this team may legally bid on the lot in front of them right now:
+   * their balance less the cheapest-possible cost of filling the slots they
+   * would still owe after winning it. Without this an auctioneer has to do the
+   * reservation arithmetic in their head mid-bid.
+   */
+  maxBidNow: number;
+};
+
+export function buildTeamTrackers(
+  teams: TeamRow[],
+  players: PlayerRow[],
+  ledger: LedgerRow[],
+  franchises: Record<string, string>,
+  ranks: Map<string, number | null>,
+  limits: SquadLimits,
+  /** Cheapest base price still on the table — the per-slot reserve floor. */
+  reservePerSlot: number,
+): TeamTracker[] {
+  const purses = summarisePurseLedger(ledger);
+  const squads = buildSquads(players);
+
+  return teams
+    .map((t) => {
+      const squad = squads[t.team_id] ?? [];
+      const purse = purses[t.team_id] ?? emptyPurse();
+      const squadSize = squad.length;
+      const overseasCount = squad.filter((p) => p.isOverseas).length;
+      const spend = squad.reduce((a, p) => a + p.salePrice, 0);
+      const slotsToMinimum = Math.max(0, limits.minSquadSize - squadSize);
+      // Winning the lot in hand fills one of those owed slots, so only the
+      // remainder has to be reserved for.
+      const slotsToReserveFor = Math.max(0, slotsToMinimum - 1);
+
+      return {
+        teamId: t.team_id,
+        name: t.name,
+        franchise: franchises[t.team_id] ?? null,
+        rank: ranks.get(t.team_id) ?? null,
+        purse,
+        squad,
+        squadSize,
+        overseasCount,
+        slotsToMinimum,
+        slotsToMaximum: Math.max(0, limits.maxSquadSize - squadSize),
+        averagePrice: squadSize > 0 ? spend / squadSize : null,
+        overseasRemaining: Math.max(0, limits.maxOverseas - overseasCount),
+        maxBidNow: Math.max(0, purse.balance - slotsToReserveFor * reservePerSlot),
+      };
+    })
+    .sort((a, b) => {
+      // Qualifying rank is the order the room already thinks in; unranked
+      // teams fall to the bottom, ordered by spend so the busiest lead.
+      if (a.rank != null && b.rank != null) return a.rank - b.rank;
+      if (a.rank != null) return -1;
+      if (b.rank != null) return 1;
+      return b.purse.playerSpend - a.purse.playerSpend;
+    });
+}
+
+/** Cheapest base price among lots still to come — the tracker's reserve floor. */
+export function cheapestRemainingBase(players: PlayerRow[]): number {
+  const open = players
+    .filter((p) => p.status === "available" || p.status === "active")
+    .map((p) => Number(p.base_price ?? 0));
+  return open.length ? Math.min(...open) : 0;
+}

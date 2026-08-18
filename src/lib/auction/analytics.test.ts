@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildSquads,
+  buildTeamTrackers,
+  cheapestRemainingBase,
   computeMarketPulse,
   computeTeamStandings,
   cumulativeSpend,
   groupProgress,
   saleTimeline,
+  summarisePurseLedger,
   summariseRosters,
   teamsAtRisk,
   type PlayerRow,
@@ -191,5 +195,172 @@ describe("computeTeamStandings / teamsAtRisk", () => {
   it("flags nobody when no price signal exists yet", () => {
     const s = computeTeamStandings(teams, rosters, {}, 4);
     expect(teamsAtRisk(s, null)).toEqual([]);
+  });
+});
+
+describe("summarisePurseLedger", () => {
+  const entry = (team_id: string, entry_kind: string, amount: number) => ({
+    team_id,
+    entry_kind,
+    amount,
+  });
+
+  it("splits funding from spend using the ledger's own sign convention", () => {
+    const out = summarisePurseLedger([
+      entry("t1", "start", 1_250_000_000),
+      entry("t1", "sim_bonus", 50_000_000),
+      entry("t1", "purchase", -30_000_000),
+      entry("t1", "analytics", -5_000_000),
+    ]);
+
+    expect(out.t1.funded).toBe(1_300_000_000);
+    expect(out.t1.playerSpend).toBe(30_000_000);
+    expect(out.t1.analyticsSpend).toBe(5_000_000);
+    expect(out.t1.balance).toBe(1_265_000_000);
+  });
+
+  it("counts a mid-event correction as funding, not as a reversal", () => {
+    // The 12.5cr → 125cr repair was posted as `adjustment` entries; a tracker
+    // that read only `start` would have understated every purse by 10×.
+    const out = summarisePurseLedger([
+      entry("t1", "start", 125_000_000),
+      entry("t1", "adjustment", 1_125_000_000),
+    ]);
+    expect(out.t1.funded).toBe(1_250_000_000);
+    expect(out.t1.playerSpend).toBe(0);
+    expect(out.t1.balance).toBe(1_250_000_000);
+  });
+
+  it("nets a reversal back out of player spend", () => {
+    const out = summarisePurseLedger([
+      entry("t1", "start", 100_000_000),
+      entry("t1", "purchase", -30_000_000),
+      entry("t1", "reversal", 30_000_000),
+    ]);
+    expect(out.t1.playerSpend).toBe(0);
+    expect(out.t1.balance).toBe(100_000_000);
+  });
+
+  it("keeps teams separate and omits teams with no entries", () => {
+    const out = summarisePurseLedger([entry("t1", "start", 10), entry("t2", "start", 20)]);
+    expect(Object.keys(out).sort()).toEqual(["t1", "t2"]);
+    expect(out.t3).toBeUndefined();
+  });
+});
+
+describe("buildSquads", () => {
+  it("buckets sold lots by owner, dearest first, with realisation", () => {
+    const out = buildSquads([
+      sold("a", 20_000_000, "2026-08-18T10:00:00Z", { base_price: 10_000_000 }),
+      sold("b", 40_000_000, "2026-08-18T10:01:00Z", { base_price: 20_000_000 }),
+      sold("c", 5_000_000, "2026-08-18T10:02:00Z", { current_team_id: "t2" }),
+      player({ id: "d", status: "available" }),
+    ]);
+
+    expect(out.t1.map((p) => p.id)).toEqual(["b", "a"]);
+    expect(out.t1[0].realisation).toBe(2);
+    expect(out.t2).toHaveLength(1);
+  });
+
+  it("returns null realisation rather than dividing by a zero base", () => {
+    const out = buildSquads([
+      sold("a", 5_000_000, "2026-08-18T10:00:00Z", { base_price: 0 }),
+    ]);
+    expect(out.t1[0].realisation).toBeNull();
+  });
+});
+
+describe("cheapestRemainingBase", () => {
+  it("looks only at lots still to come", () => {
+    expect(
+      cheapestRemainingBase([
+        player({ id: "a", base_price: 20_000_000 }),
+        player({ id: "b", base_price: 2_000_000, status: "active" }),
+        // Already gone — must not set the floor.
+        sold("c", 1_000_000, "2026-08-18T10:00:00Z", { base_price: 500_000 }),
+        player({ id: "d", base_price: 100_000, status: "unsold" }),
+      ]),
+    ).toBe(2_000_000);
+  });
+
+  it("is zero once nothing is left", () => {
+    expect(cheapestRemainingBase([player({ id: "a", status: "unsold" })])).toBe(0);
+  });
+});
+
+describe("buildTeamTrackers", () => {
+  const limits = { minSquadSize: 3, maxSquadSize: 5, maxOverseas: 2 };
+  const teamRows = [
+    { team_id: "t1", name: "Alpha", purse_balance: 0 },
+    { team_id: "t2", name: "Beta", purse_balance: 0 },
+  ];
+  const ledger = [
+    { team_id: "t1", entry_kind: "start", amount: 100_000_000 },
+    { team_id: "t1", entry_kind: "purchase", amount: -20_000_000 },
+    { team_id: "t2", entry_kind: "start", amount: 100_000_000 },
+  ];
+  const roster = [sold("a", 20_000_000, "2026-08-18T10:00:00Z", { is_overseas: true })];
+
+  it("reserves the cheapest base for each slot still owed after this lot", () => {
+    const [alpha] = buildTeamTrackers(
+      teamRows,
+      roster,
+      ledger,
+      {},
+      new Map([["t1", 1]]),
+      limits,
+      1_000_000,
+    );
+    // Alpha holds 80m, owns 1 of a 3-player minimum. Winning the lot in hand
+    // leaves 1 more slot owed, so 1m is held back: 80m − 1m.
+    expect(alpha.slotsToMinimum).toBe(2);
+    expect(alpha.maxBidNow).toBe(79_000_000);
+    expect(alpha.purse.balance).toBe(80_000_000);
+    expect(alpha.overseasRemaining).toBe(1);
+    expect(alpha.slotsToMaximum).toBe(4);
+  });
+
+  it("frees the whole balance once the minimum squad is met", () => {
+    const full = [
+      sold("a", 10_000_000, "2026-08-18T10:00:00Z"),
+      sold("b", 10_000_000, "2026-08-18T10:01:00Z"),
+      sold("c", 10_000_000, "2026-08-18T10:02:00Z"),
+    ];
+    const [alpha] = buildTeamTrackers(teamRows, full, ledger, {}, new Map(), limits, 1_000_000);
+    expect(alpha.slotsToMinimum).toBe(0);
+    expect(alpha.maxBidNow).toBe(alpha.purse.balance);
+  });
+
+  it("never reports a negative max bid", () => {
+    const broke = [{ team_id: "t1", entry_kind: "start", amount: 1_000 }];
+    const [alpha] = buildTeamTrackers(teamRows, [], broke, {}, new Map(), limits, 1_000_000);
+    expect(alpha.maxBidNow).toBe(0);
+  });
+
+  it("orders by qualifying rank, pushing unranked teams to the bottom", () => {
+    const out = buildTeamTrackers(
+      teamRows,
+      [],
+      ledger,
+      {},
+      new Map([["t2", 1]]),
+      limits,
+      1_000_000,
+    );
+    expect(out.map((t) => t.teamId)).toEqual(["t2", "t1"]);
+  });
+
+  it("prefers the franchise label but keeps the registered name", () => {
+    const [alpha] = buildTeamTrackers(
+      teamRows,
+      [],
+      ledger,
+      { t1: "Guwahati Mavericks" },
+      new Map([["t1", 1]]),
+      limits,
+      1_000_000,
+    );
+    expect(alpha.franchise).toBe("Guwahati Mavericks");
+    expect(alpha.name).toBe("Alpha");
   });
 });
