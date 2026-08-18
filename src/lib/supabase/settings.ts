@@ -2,6 +2,10 @@ import "server-only";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { selectCurrentEdition } from "@/lib/event-edition";
+import {
+  franchiseAssignmentsSchema,
+  participantFieldVisibilitySchema,
+} from "@/lib/validation/auction";
 
 /**
  * PUB-08: landing-page content that must be admin-editable with no code
@@ -24,6 +28,12 @@ const SETTINGS_SCHEMAS = {
     z.object({ name: z.string(), role: z.string(), phone: z.string() }),
   ),
   instagram_url: z.string().url(),
+  // Auction operations. Unlike the keys above (whose write path is the
+  // public-content form in admin/settings), these two are written by
+  // admin/auction/setup — but they are registered here so there is exactly
+  // one validated read path for every settings key.
+  auction_franchise_assignments: franchiseAssignmentsSchema,
+  participant_field_visibility: participantFieldVisibilitySchema,
 } as const;
 
 export type SettingsKey = keyof typeof SETTINGS_SCHEMAS;
@@ -43,15 +53,26 @@ export async function getSettings<K extends SettingsKey>(
   keys: readonly K[],
 ): Promise<{ [P in K]?: SettingsValue<P> }> {
   const supabase = await createClient();
-  const result: Partial<Record<SettingsKey, unknown>> = {};
-
   const { data: edition } = await selectCurrentEdition(supabase);
-  if (!edition) return result as { [P in K]?: SettingsValue<P> };
+  if (!edition) return {} as { [P in K]?: SettingsValue<P> };
+  return getSettingsForEdition(edition.id, keys);
+}
+
+/**
+ * Same validated read, for callers that already resolved the edition (every
+ * auction page does) — saves the redundant active-edition round-trip.
+ */
+export async function getSettingsForEdition<K extends SettingsKey>(
+  eventEditionId: string,
+  keys: readonly K[],
+): Promise<{ [P in K]?: SettingsValue<P> }> {
+  const supabase = await createClient();
+  const result: Partial<Record<SettingsKey, unknown>> = {};
 
   const { data: rows } = await supabase
     .from("settings")
     .select("key, value")
-    .eq("event_edition_id", edition.id)
+    .eq("event_edition_id", eventEditionId)
     .in("key", keys as unknown as string[]);
 
   for (const row of rows ?? []) {

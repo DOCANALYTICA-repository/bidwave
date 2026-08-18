@@ -3,6 +3,7 @@ import Link from "next/link";
 const AUCTION_NAV = [
   ["/admin/auction/players", "Players"],
   ["/admin/auction/rules", "Rules"],
+  ["/admin/auction/setup", "Setup"],
   ["/admin/auction/console", "Console"],
   ["/admin/auction/analytics", "Analytics"],
   ["/admin/auction/analytics-requests", "Requests"],

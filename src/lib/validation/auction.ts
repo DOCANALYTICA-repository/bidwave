@@ -41,6 +41,64 @@ export const IMPORT_COLUMN_ALIASES: Record<string, keyof PlayerImportRow> = {
   team: "iplTeam",
 };
 
+/**
+ * The 12 franchise identities a qualified team can be assigned for the
+ * auction (the 10 current IPL sides plus the two retired ones the client
+ * asked for). A fixed `as const` tuple + z.enum, following
+ * CHRIST_CAMPUSES in validation/registration.ts.
+ *
+ * Names only — never IPL logos, flags or official team colours (PRD §24.2
+ * forbids reproducing IPL brand assets; see CLAUDE.md's approved
+ * deviations). The UI renders these as plain text labels.
+ */
+export const AUCTION_FRANCHISES = [
+  "CHENNAI SUPER KINGS",
+  "DELHI CAPITALS",
+  "GUJARAT TITANS",
+  "KOLKATA KNIGHT RIDERS",
+  "LUCKNOW SUPER GIANTS",
+  "MUMBAI INDIANS",
+  "PUNJAB KINGS",
+  "RAJASTHAN ROYALS",
+  "ROYAL CHALLENGERS BENGALURU",
+  "SUNRISERS HYDERABAD",
+  "DECCAN CHARGERS",
+  "KOCHI TUSKERS KERALA",
+] as const;
+
+export type AuctionFranchise = (typeof AUCTION_FRANCHISES)[number];
+
+/**
+ * Which player fields participants may see in the catalogue. Name,
+ * nationality and pool are always visible (they are what makes the list
+ * usable at all) and so are not represented here.
+ *
+ * `stats` is deliberately absent: player statistics stay behind the paid
+ * analytics unlock (AN-01..08) and are not admin-toggleable.
+ */
+export const PARTICIPANT_FIELDS = ["role", "base_price", "ipl_team"] as const;
+export type ParticipantField = (typeof PARTICIPANT_FIELDS)[number];
+
+export const participantFieldVisibilitySchema = z.object({
+  role: z.boolean(),
+  base_price: z.boolean(),
+  ipl_team: z.boolean(),
+});
+
+export type ParticipantFieldVisibility = z.infer<typeof participantFieldVisibilitySchema>;
+
+/** Role is on by default; price and prior team start hidden. */
+export const DEFAULT_PARTICIPANT_VISIBILITY: ParticipantFieldVisibility = {
+  role: true,
+  base_price: false,
+  ipl_team: false,
+};
+
+/** team_id -> franchise name. Validated for duplicate franchises on write. */
+export const franchiseAssignmentsSchema = z.record(z.string(), z.enum(AUCTION_FRANCHISES));
+
+export type FranchiseAssignments = z.infer<typeof franchiseAssignmentsSchema>;
+
 export type ImportRowError = {
   row_number: number;
   field: string;

@@ -52,5 +52,12 @@ next-env.d.ts
 # not versioned: large binaries, not application source.
 /reference/
 
+# Auction player source data (2026-08-18): the raw deck (114MB, exceeds
+# GitHub's 100MB push limit) and the unreliable Codex-merged CSV it
+# superseded. Neither is application source; scripts/build-auction-import.py
+# is the code, auction_players_import.csv is its (small, kept) output.
+/*.pptx
+/merged_auction_players_updated.csv
+
 # Playwright auth storage states (session cookies, per-run — gitignored, not secrets, just noise)
 /tests/e2e/.auth/

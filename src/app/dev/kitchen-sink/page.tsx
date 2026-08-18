@@ -48,6 +48,8 @@ import {
   StatusPill,
   StatTile,
   DataTable,
+  MeterBar,
+  Sparkline,
   type StatusKey,
 } from "@/components/bidwave";
 import {
@@ -219,6 +221,39 @@ export default function KitchenSinkPage() {
         <h2 className="font-heading text-lg font-bold">Money &amp; deltas</h2>
         <div className="rounded-xl border border-border bg-card p-6">
           <MoneyDemo />
+        </div>
+      </section>
+
+      {/* ---------------------------------------------------------------- */}
+      <section className="space-y-4">
+        <h2 className="font-heading text-lg font-bold">Sparkline &amp; meters</h2>
+        <div className="grid gap-6 rounded-xl border border-border bg-card p-6 sm:grid-cols-2">
+          <div className="space-y-2">
+            <p className="text-xs uppercase tracking-wide text-ink-3">Sale price, in order sold</p>
+            <Sparkline
+              values={[20, 15, 32, 28, 45, 38, 60, 52, 41, 75]}
+              labels={["Dhoni", "Shami", "Gill", "Pant", "Rohit", "Rahul", "Warner", "Pandya", "Starc", "Kohli"]}
+              format="crore"
+              ariaLabel="Demo sale price sparkline across ten lots"
+              height={80}
+            />
+          </div>
+          <div className="space-y-2">
+            <p className="text-xs uppercase tracking-wide text-ink-3">Cumulative spend</p>
+            <Sparkline
+              values={[20, 35, 67, 95, 140, 178, 238, 290, 331, 406]}
+              tone="analytics"
+              format="crore"
+              ariaLabel="Demo cumulative spend sparkline"
+              height={80}
+            />
+          </div>
+          <div className="space-y-2.5 sm:col-span-2">
+            <p className="text-xs uppercase tracking-wide text-ink-3">Sell-through by pool</p>
+            <MeterBar label="POT 01 · MARQUEE 1" value={12} max={15} detail="184% of base" />
+            <MeterBar label="POT 05 · CAPPED BOWLERS" value={9} max={15} detail="97% of base · 2 unsold" />
+            <MeterBar label="POT 22 · UNCAPPED 3" value={17} max={17} detail="over cap" tone="danger" />
+          </div>
         </div>
       </section>
 

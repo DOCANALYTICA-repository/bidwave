@@ -11,6 +11,7 @@ export * from "@/components/bidwave/empty-state";
 export * from "@/components/bidwave/reconnect-banner";
 export * from "@/components/bidwave/data-table";
 export * from "@/components/bidwave/meter-bar";
+export * from "@/components/bidwave/sparkline";
 export * from "@/components/bidwave/loading-skeletons";
 export * from "@/components/bidwave/radial-score";
 export * from "@/components/bidwave/score-summary";
