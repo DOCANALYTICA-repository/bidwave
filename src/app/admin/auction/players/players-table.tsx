@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { DataTable, type DataTableColumn, StatusPill, Money } from "@/components/bidwave";
 import { Button } from "@/components/ui/button";
@@ -34,6 +34,20 @@ export function PlayersTable({
   roundId: string | null;
 }) {
   const [editing, setEditing] = useState<Player | "new" | null>(null);
+  const [search, setSearch] = useState("");
+
+  const filteredPlayers = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return players;
+    return players.filter(
+      (p) =>
+        p.full_name.toLowerCase().includes(q) ||
+        p.role.toLowerCase().includes(q) ||
+        p.pool.toLowerCase().includes(q) ||
+        (p.ipl_team ?? "").toLowerCase().includes(q) ||
+        (p.nationality ?? "").toLowerCase().includes(q),
+    );
+  }, [players, search]);
 
   const columns: DataTableColumn<Player>[] = [
     { key: "name", header: "Name", render: (p) => p.full_name },
@@ -74,18 +88,28 @@ export function PlayersTable({
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="font-heading text-xs font-semibold uppercase tracking-widest text-gold">
-          {players.length} player{players.length === 1 ? "" : "s"}
+          {filteredPlayers.length} player{filteredPlayers.length === 1 ? "" : "s"}
+          {search.trim() && ` of ${players.length}`}
         </h2>
         <Button size="sm" onClick={() => setEditing("new")}>
           Add player
         </Button>
       </div>
+      <Input
+        placeholder="Search by name, role, pool, IPL team or nationality…"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+      />
       <DataTable
         columns={columns}
-        rows={players}
+        rows={filteredPlayers}
         rowKey={(p) => p.id}
-        emptyTitle="No players yet"
-        emptyDescription="Import a CSV/XLSX file above, or add players individually."
+        emptyTitle={players.length === 0 ? "No players yet" : "No players match your search"}
+        emptyDescription={
+          players.length === 0
+            ? "Import a CSV/XLSX file above, or add players individually."
+            : undefined
+        }
       />
       <Sheet open={!!editing} onOpenChange={(open) => !open && setEditing(null)}>
         <SheetContent side="right" className="w-full sm:max-w-lg">
