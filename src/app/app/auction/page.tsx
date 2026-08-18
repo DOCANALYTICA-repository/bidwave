@@ -10,8 +10,10 @@ import {
   MeterBar,
 } from "@/components/bidwave";
 import { TeamAuctionRealtime } from "@/app/app/auction/team-auction-realtime";
+import { SquadBoard } from "@/components/auction/squad-board";
 import { selectCurrentEdition } from "@/lib/event-edition";
 import { getSettingsForEdition } from "@/lib/supabase/settings";
+import { buildSquadBoard, seatedTeams, type BoardPlayerRow } from "@/lib/auction/board";
 
 export const metadata: Metadata = { title: "Auction" };
 export const dynamic = "force-dynamic";
@@ -63,6 +65,38 @@ export default async function TeamAuctionPage() {
       getSettingsForEdition(edition.id, ["auction_franchise_assignments"]),
     ]);
 
+  // The whole-field board above this team's own detail. Reads the same
+  // curated public views the /live board does — `players_public` carries no
+  // `stats`, so showing rival squads here does not leak what the paid
+  // analytics module sells. `qualifications` is not readable from here, so
+  // the field is the seated franchises (see lib/auction/board).
+  const [{ data: allSold }, { data: allPurses }] = await Promise.all([
+    supabase
+      .from("players_public")
+      .select("id, full_name, status, current_team_id, sale_price")
+      .eq("event_edition_id", edition.id)
+      .eq("status", "sold"),
+    supabase
+      .from("public_team_purses")
+      .select("team_id, name, purse_balance")
+      .eq("event_edition_id", edition.id),
+  ]);
+
+  const allFranchises = settings.auction_franchise_assignments ?? {};
+  const boardTeams = buildSquadBoard(
+    seatedTeams(
+      (allPurses ?? []).map((t) => ({
+        team_id: t.team_id as string,
+        name: t.name as string,
+        purse_balance: Number(t.purse_balance ?? 0),
+      })),
+      allFranchises,
+    ),
+    (allSold ?? []) as BoardPlayerRow[],
+    allFranchises,
+    { viewerTeamId: user.id },
+  );
+
   const players = roster ?? [];
   const franchise = settings.auction_franchise_assignments?.[user.id] ?? null;
 
@@ -97,8 +131,28 @@ export default async function TeamAuctionPage() {
   );
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-8 px-6 py-12">
+    <div className="w-full">
       <TeamAuctionRealtime eventEditionId={edition.id} />
+
+      {/* Whole-field board first — your own tile ringed in gold — then your
+          squad in full below. */}
+      {boardTeams.length > 0 && (
+        <section className="px-6 pt-6">
+          <div className="mb-2.5 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+            <h2 className="font-heading text-xs font-semibold uppercase tracking-widest text-gold">
+              The field
+            </h2>
+            <p className="font-mono text-xs text-ink-3">
+              {boardTeams.length} franchises · squads, prices and purse left
+            </p>
+          </div>
+          {/* 8rem measured in-browser against the real AppLayout chrome
+              (header 53px + this section's padding + heading line = 104px). */}
+          <SquadBoard teams={boardTeams} chromeRem={8} />
+        </section>
+      )}
+
+      <div className="mx-auto w-full max-w-3xl space-y-8 px-6 pb-12 pt-12">
 
       <div className="flex items-start justify-between gap-4">
         <div>
@@ -262,6 +316,7 @@ export default async function TeamAuctionPage() {
           </ul>
         )}
       </section>
+      </div>
     </div>
   );
 }

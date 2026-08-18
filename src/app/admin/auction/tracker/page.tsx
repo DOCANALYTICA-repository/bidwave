@@ -5,8 +5,9 @@ import { selectCurrentEdition } from "@/lib/event-edition";
 import { getSettingsForEdition } from "@/lib/supabase/settings";
 import { TrackerRealtime } from "@/app/admin/auction/tracker/tracker-realtime";
 import { TeamCard } from "@/app/admin/auction/tracker/team-card";
-import { SquadBoard } from "@/app/admin/auction/tracker/squad-board";
+import { SquadBoard } from "@/components/auction/squad-board";
 import { formatCrore } from "@/lib/auction/format";
+import { buildSquadBoard } from "@/lib/auction/board";
 import {
   buildTeamTrackers,
   cheapestRemainingBase,
@@ -115,6 +116,12 @@ export default async function AdminAuctionTrackerPage() {
     cheapestRemainingBase(players),
   );
 
+  // The board reads the same qualified field the detail cards do, so admin,
+  // /live and the team dashboards cannot disagree about a squad or a purse.
+  const boardTeams = buildSquadBoard(biddingTeams, players, franchises, {
+    ranks: qualifiedRank,
+  });
+
   const pulse = computeMarketPulse(players);
   const roomFunded = trackers.reduce((a, t) => a + t.purse.funded, 0);
   const roomRemaining = trackers.reduce((a, t) => a + t.purse.balance, 0);
@@ -150,7 +157,7 @@ export default async function AdminAuctionTrackerPage() {
           </p>
         </div>
 
-        <SquadBoard teams={trackers} />
+        <SquadBoard teams={boardTeams} />
       </section>
 
       {/* ------------------------------------------------------------------
