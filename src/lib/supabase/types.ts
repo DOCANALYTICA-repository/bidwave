@@ -23,7 +23,7 @@
  * 20260806120000_fix_quiz_question_position_race.sql,
  * 20260807090000_fix_admin_overloads_and_quiz_position_lock.sql,
  * 20260807100000_simulation_spec_conformance.sql,
- * 20260814050000_quiz_retest_round.sql
+ * 20260814050000_quiz_retest_round.sql, 20260819090000_auction_trades.sql
  */
 export type Json =
   | string
@@ -351,7 +351,13 @@ export type Database = {
         Row: {
           id: string;
           event_edition_id: string;
-          kind: "quiz" | "submission" | "offline_info" | "simulation" | "auction" | "conference";
+          kind:
+            | "quiz"
+            | "submission"
+            | "offline_info"
+            | "simulation"
+            | "auction"
+            | "conference";
           sequence: number;
           slug: string;
           title: string;
@@ -377,7 +383,13 @@ export type Database = {
         Insert: {
           id?: string;
           event_edition_id: string;
-          kind: "quiz" | "submission" | "offline_info" | "simulation" | "auction" | "conference";
+          kind:
+            | "quiz"
+            | "submission"
+            | "offline_info"
+            | "simulation"
+            | "auction"
+            | "conference";
           sequence: number;
           slug: string;
           title: string;
@@ -403,7 +415,13 @@ export type Database = {
         Update: {
           id?: string;
           event_edition_id?: string;
-          kind?: "quiz" | "submission" | "offline_info" | "simulation" | "auction" | "conference";
+          kind?:
+            | "quiz"
+            | "submission"
+            | "offline_info"
+            | "simulation"
+            | "auction"
+            | "conference";
           sequence?: number;
           slug?: string;
           title?: string;
@@ -1690,7 +1708,14 @@ export type Database = {
           id: string;
           event_edition_id: string;
           team_id: string;
-          entry_kind: "start" | "sim_bonus" | "purchase" | "reversal" | "analytics" | "adjustment";
+          entry_kind:
+            | "start"
+            | "sim_bonus"
+            | "purchase"
+            | "reversal"
+            | "analytics"
+            | "adjustment"
+            | "trade";
           amount: number;
           ref_kind: string | null;
           ref_id: string | null;
@@ -1702,7 +1727,14 @@ export type Database = {
           id?: string;
           event_edition_id: string;
           team_id: string;
-          entry_kind: "start" | "sim_bonus" | "purchase" | "reversal" | "analytics" | "adjustment";
+          entry_kind:
+            | "start"
+            | "sim_bonus"
+            | "purchase"
+            | "reversal"
+            | "analytics"
+            | "adjustment"
+            | "trade";
           amount: number;
           ref_kind?: string | null;
           ref_id?: string | null;
@@ -1714,7 +1746,14 @@ export type Database = {
           id?: string;
           event_edition_id?: string;
           team_id?: string;
-          entry_kind?: "start" | "sim_bonus" | "purchase" | "reversal" | "analytics" | "adjustment";
+          entry_kind?:
+            | "start"
+            | "sim_bonus"
+            | "purchase"
+            | "reversal"
+            | "analytics"
+            | "adjustment"
+            | "trade";
           amount?: number;
           ref_kind?: string | null;
           ref_id?: string | null;
@@ -1971,7 +2010,9 @@ export type Database = {
             | "rule_set_saved"
             | "auction_started"
             | "auction_ended"
-            | "simulation_purse_applied";
+            | "simulation_purse_applied"
+            | "trade_executed"
+            | "trade_reversed";
           player_id: string | null;
           team_id: string | null;
           sale_id: string | null;
@@ -1995,7 +2036,9 @@ export type Database = {
             | "rule_set_saved"
             | "auction_started"
             | "auction_ended"
-            | "simulation_purse_applied";
+            | "simulation_purse_applied"
+            | "trade_executed"
+            | "trade_reversed";
           player_id?: string | null;
           team_id?: string | null;
           sale_id?: string | null;
@@ -2019,7 +2062,9 @@ export type Database = {
             | "rule_set_saved"
             | "auction_started"
             | "auction_ended"
-            | "simulation_purse_applied";
+            | "simulation_purse_applied"
+            | "trade_executed"
+            | "trade_reversed";
           player_id?: string | null;
           team_id?: string | null;
           sale_id?: string | null;
@@ -2088,6 +2133,121 @@ export type Database = {
           },
         ];
       };
+      auction_trades: {
+        Row: {
+          id: string;
+          event_edition_id: string;
+          team_a_id: string;
+          team_b_id: string;
+          cash_a_to_b: number;
+          cash_b_to_a: number;
+          memo: string | null;
+          executed_at: string;
+          executed_by: string | null;
+          reversed_at: string | null;
+          reversed_by: string | null;
+          reversal_reason: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          event_edition_id: string;
+          team_a_id: string;
+          team_b_id: string;
+          cash_a_to_b?: number;
+          cash_b_to_a?: number;
+          memo?: string | null;
+          executed_at?: string;
+          executed_by?: string | null;
+          reversed_at?: string | null;
+          reversed_by?: string | null;
+          reversal_reason?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          event_edition_id?: string;
+          team_a_id?: string;
+          team_b_id?: string;
+          cash_a_to_b?: number;
+          cash_b_to_a?: number;
+          memo?: string | null;
+          executed_at?: string;
+          executed_by?: string | null;
+          reversed_at?: string | null;
+          reversed_by?: string | null;
+          reversal_reason?: string | null;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "auction_trades_event_edition_id_fkey";
+            columns: ["event_edition_id"];
+            isOneToOne: false;
+            referencedRelation: "event_editions";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "auction_trades_team_a_id_fkey";
+            columns: ["team_a_id"];
+            isOneToOne: false;
+            referencedRelation: "teams";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "auction_trades_team_b_id_fkey";
+            columns: ["team_b_id"];
+            isOneToOne: false;
+            referencedRelation: "teams";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      auction_trade_players: {
+        Row: {
+          id: string;
+          trade_id: string;
+          player_id: string;
+          from_team_id: string;
+          to_team_id: string;
+          price_at_trade: number | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          trade_id: string;
+          player_id: string;
+          from_team_id: string;
+          to_team_id: string;
+          price_at_trade?: number | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          trade_id?: string;
+          player_id?: string;
+          from_team_id?: string;
+          to_team_id?: string;
+          price_at_trade?: number | null;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "auction_trade_players_trade_id_fkey";
+            columns: ["trade_id"];
+            isOneToOne: false;
+            referencedRelation: "auction_trades";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "auction_trade_players_player_id_fkey";
+            columns: ["player_id"];
+            isOneToOne: false;
+            referencedRelation: "players";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: {
       pending_simulation_purse_awards: {
@@ -2104,7 +2264,13 @@ export type Database = {
         Row: {
           id: string;
           event_edition_id: string;
-          kind: "quiz" | "submission" | "offline_info" | "simulation" | "auction" | "conference";
+          kind:
+            | "quiz"
+            | "submission"
+            | "offline_info"
+            | "simulation"
+            | "auction"
+            | "conference";
           sequence: number;
           slug: string;
           title: string;
@@ -2191,6 +2357,23 @@ export type Database = {
           sold_at: string | null;
           created_at: string;
           updated_at: string;
+        };
+        Relationships: [];
+      };
+      public_trades_feed: {
+        Row: {
+          id: string;
+          event_edition_id: string;
+          team_a_id: string;
+          team_a_name: string;
+          team_b_id: string;
+          team_b_name: string;
+          cash_a_to_b: number;
+          cash_b_to_a: number;
+          memo: string | null;
+          executed_at: string;
+          reversed_at: string | null;
+          reversal_reason: string | null;
         };
         Relationships: [];
       };
@@ -2288,7 +2471,12 @@ export type Database = {
         Returns: string;
       };
       admin_set_round_lifecycle: {
-        Args: { p_round_id: string; p_action: string; p_admin_id?: string | null; p_reason?: string | null };
+        Args: {
+          p_round_id: string;
+          p_action: string;
+          p_admin_id?: string | null;
+          p_reason?: string | null;
+        };
         Returns: undefined;
       };
       admin_upsert_round_material: {
@@ -2347,7 +2535,12 @@ export type Database = {
       };
       stage_standings: {
         Args: { p_stage_id: string };
-        Returns: { team_id: string; team_name: string; aggregate: number; rank: number }[];
+        Returns: {
+          team_id: string;
+          team_name: string;
+          aggregate: number;
+          rank: number;
+        }[];
       };
       admin_set_stage_rounds: {
         Args: { p_stage_id: string; p_round_weights: Json };
@@ -2406,7 +2599,11 @@ export type Database = {
         Returns: Json;
       };
       get_quiz_state: {
-        Args: { p_team_id: string; p_round_id: string; p_session_token: string };
+        Args: {
+          p_team_id: string;
+          p_round_id: string;
+          p_session_token: string;
+        };
         Returns: Json;
       };
       save_quiz_answer: {
@@ -2420,11 +2617,21 @@ export type Database = {
         Returns: undefined;
       };
       submit_quiz_attempt: {
-        Args: { p_team_id: string; p_round_id: string; p_reason: string; p_session_token: string };
+        Args: {
+          p_team_id: string;
+          p_round_id: string;
+          p_reason: string;
+          p_session_token: string;
+        };
         Returns: Json;
       };
       log_quiz_events: {
-        Args: { p_team_id: string; p_round_id: string; p_session_token: string; p_events: Json };
+        Args: {
+          p_team_id: string;
+          p_round_id: string;
+          p_session_token: string;
+          p_events: Json;
+        };
         Returns: number;
       };
       record_quiz_strike: {
@@ -2437,7 +2644,11 @@ export type Database = {
         Returns: Json;
       };
       ack_quiz_warning: {
-        Args: { p_team_id: string; p_round_id: string; p_session_token: string };
+        Args: {
+          p_team_id: string;
+          p_round_id: string;
+          p_session_token: string;
+        };
         Returns: undefined;
       };
       resume_quiz_attempt: {
@@ -2467,7 +2678,11 @@ export type Database = {
         Returns: undefined;
       };
       admin_remove_round_eligible_team: {
-        Args: { p_round_id: string; p_team_id: string; p_admin_id?: string | null };
+        Args: {
+          p_round_id: string;
+          p_team_id: string;
+          p_admin_id?: string | null;
+        };
         Returns: undefined;
       };
       admin_set_round_policy: {
@@ -2540,11 +2755,21 @@ export type Database = {
         Returns: string;
       };
       admin_set_simulation_lifecycle: {
-        Args: { p_config_id: string; p_action: string; p_admin_id?: string | null; p_reason?: string | null };
+        Args: {
+          p_config_id: string;
+          p_action: string;
+          p_admin_id?: string | null;
+          p_reason?: string | null;
+        };
         Returns: undefined;
       };
       reverse_simulation_reward: {
-        Args: { p_config_id: string; p_team_id: string; p_admin_id: string; p_reason: string };
+        Args: {
+          p_config_id: string;
+          p_team_id: string;
+          p_admin_id: string;
+          p_reason: string;
+        };
         Returns: Json;
       };
       admin_confirm_simulation_reward: {
@@ -2589,7 +2814,11 @@ export type Database = {
         Returns: number;
       };
       admin_import_players: {
-        Args: { p_event_edition_id: string; p_round_id: string | null; p_rows: Json };
+        Args: {
+          p_event_edition_id: string;
+          p_round_id: string | null;
+          p_rows: Json;
+        };
         Returns: Json;
       };
       admin_upsert_player: {
@@ -2635,11 +2864,19 @@ export type Database = {
         Returns: Json;
       };
       heartbeat_record_lock: {
-        Args: { p_record_type: string; p_record_id: string; p_session_token: string };
+        Args: {
+          p_record_type: string;
+          p_record_id: string;
+          p_session_token: string;
+        };
         Returns: undefined;
       };
       release_record_lock: {
-        Args: { p_record_type: string; p_record_id: string; p_session_token: string };
+        Args: {
+          p_record_type: string;
+          p_record_id: string;
+          p_session_token: string;
+        };
         Returns: undefined;
       };
       record_sale: {
@@ -2662,11 +2899,19 @@ export type Database = {
         Returns: Json;
       };
       set_active_player: {
-        Args: { p_player_id: string; p_expected_updated_at: string; p_admin_id: string };
+        Args: {
+          p_player_id: string;
+          p_expected_updated_at: string;
+          p_admin_id: string;
+        };
         Returns: Json;
       };
       mark_player_unsold: {
-        Args: { p_player_id: string; p_expected_updated_at: string; p_admin_id: string };
+        Args: {
+          p_player_id: string;
+          p_expected_updated_at: string;
+          p_admin_id: string;
+        };
         Returns: Json;
       };
       recall_player: {
@@ -2683,7 +2928,12 @@ export type Database = {
         Returns: undefined;
       };
       broadcast_live: {
-        Args: { p_event_edition_id: string; p_topic: string; p_kind: string; p_payload: Json };
+        Args: {
+          p_event_edition_id: string;
+          p_topic: string;
+          p_kind: string;
+          p_payload: Json;
+        };
         Returns: undefined;
       };
       request_analytics: {
@@ -2709,6 +2959,28 @@ export type Database = {
       team_meets_stage_requirement: {
         Args: { p_round_id: string | null; p_team_id: string };
         Returns: boolean;
+      };
+      execute_trade: {
+        Args: {
+          p_event_edition_id: string;
+          p_team_a_id: string;
+          p_team_b_id: string;
+          p_players_a_to_b: string[];
+          p_players_b_to_a: string[];
+          p_cash_a_to_b: number;
+          p_cash_b_to_a: number;
+          p_memo: string | null;
+          p_admin_id: string;
+        };
+        Returns: Json;
+      };
+      reverse_trade: {
+        Args: { p_trade_id: string; p_reason: string; p_admin_id: string };
+        Returns: Json;
+      };
+      auction_squad_violations: {
+        Args: { p_team_id: string; p_rule_set_id: string };
+        Returns: Json;
       };
     };
     Enums: Record<string, never>;

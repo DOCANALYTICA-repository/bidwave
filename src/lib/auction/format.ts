@@ -8,6 +8,9 @@
  * at that density rather than a lossy shortcut.
  */
 const croreFmt = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 2 });
+// One crore is 10^7 rupees, so seven decimals is whole-rupee resolution — the
+// fallback for an amount too small to survive rounding to two.
+const preciseCroreFmt = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 7 });
 
 const rupeeFmt = new Intl.NumberFormat("en-IN", {
   style: "currency",
@@ -26,7 +29,17 @@ export function formatRupees(rupees: number): string {
 
 /** 915000000 -> "₹91.5cr". Trailing zeros are dropped by the formatter. */
 export function formatCrore(rupees: number): string {
-  return `₹${croreFmt.format((Number(rupees) || 0) / 10_000_000)}cr`;
+  const value = Number(rupees) || 0;
+  const crore = value / 10_000_000;
+  const rounded = croreFmt.format(crore);
+  // Anything under ₹50,000 rounds to "0" at two decimals, and "₹0cr" next to a
+  // real amount of money reads as "free". No base price or bid in this event is
+  // finer than a lakh, so this only fires on odd cash figures — but it must
+  // stretch rather than lie when it does.
+  if (value !== 0 && Number(rounded.replace(/,/g, "")) === 0) {
+    return `₹${preciseCroreFmt.format(crore)}cr`;
+  }
+  return `₹${rounded}cr`;
 }
 
 /** One crore, in rupees. The unit the auction room actually speaks in. */

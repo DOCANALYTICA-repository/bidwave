@@ -73,3 +73,14 @@ describe("formatRupees", () => {
     expect(formatRupees(2_000_000)).toBe("₹20,00,000");
   });
 });
+
+describe("formatCrore — amounts too small to round", () => {
+  it("stretches precision rather than printing a non-zero amount as ₹0cr", () => {
+    // ₹1,000 is 0.0001cr. Two decimals would render it "₹0cr", which reads as
+    // free next to a real figure.
+    expect(formatCrore(1_000)).toBe("₹0.0001cr");
+    expect(formatCrore(1)).toBe("₹0.0000001cr");
+    // Genuinely zero still reads as zero.
+    expect(formatCrore(0)).toBe("₹0cr");
+  });
+});

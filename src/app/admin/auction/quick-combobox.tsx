@@ -5,7 +5,8 @@ import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 
 /**
- * A type-to-filter, Enter-to-pick field for the auction console.
+ * A type-to-filter, Enter-to-pick field for the auction admin surfaces — the
+ * console's player and franchise pickers, and the trade block's.
  *
  * Deliberately *not* a shadcn Select. In the low-value pools a lot clears
  * roughly every 40 seconds, and a Select costs a click to open, a scan of a

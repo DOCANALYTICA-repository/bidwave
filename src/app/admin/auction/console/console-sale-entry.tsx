@@ -19,7 +19,7 @@ import { ConsoleLockBadge } from "@/app/admin/auction/console/console-lock-badge
 import {
   QuickCombobox,
   type QuickComboboxItem,
-} from "@/app/admin/auction/console/quick-combobox";
+} from "@/app/admin/auction/quick-combobox";
 import { useLiveBroadcast } from "@/lib/realtime/use-live-broadcast";
 import {
   formatCrore,

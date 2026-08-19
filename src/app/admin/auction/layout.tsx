@@ -6,6 +6,7 @@ const AUCTION_NAV = [
   ["/admin/auction/setup", "Setup"],
   ["/admin/auction/console", "Console"],
   ["/admin/auction/tracker", "Tracker"],
+  ["/admin/auction/trades", "Trades"],
   ["/admin/auction/analytics", "Analytics"],
   ["/admin/auction/analytics-requests", "Requests"],
 ] as const;
