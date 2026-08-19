@@ -1,5 +1,5 @@
-import { test, expect, type Page } from "@playwright/test";
-import { loginAsAdmin, loginAsTeam } from "../fixtures";
+import { test, expect } from "@playwright/test";
+import { loginAsAdmin, loginAsTeam, putPlayerUpForBidding } from "../fixtures";
 
 /**
  * AN-01..08, TEAM-AUC-06. request-analytics-form.tsx gates the "Request
@@ -8,34 +8,25 @@ import { loginAsAdmin, loginAsTeam } from "../fixtures";
  * approved request unlocks analytics-module.tsx permanently for that team;
  * a rejected request shows the admin's reason and offers a re-request.
  */
-async function ensureActivePlayer(page: Page): Promise<string> {
-  await page.goto("/admin/auction/players");
-  const activeRow = page.getByRole("row", { name: /Active/ }).first();
-  if ((await activeRow.count()) > 0) {
-    return (await activeRow.getByRole("cell").first().innerText()).trim();
-  }
-  const availableRow = page.getByRole("row", { name: /Available/ }).first();
-  await availableRow.getByRole("button", { name: "Set active" }).click();
-  await expect(page.getByRole("row", { name: /Active/ }).first()).toBeVisible();
-  return (await page.getByRole("row", { name: /Active/ }).first().getByRole("cell").first().innerText()).trim();
-}
 
 test.describe("analytics unlock", () => {
   test("a team with insufficient purse cannot request analytics", async ({ page }) => {
     await loginAsAdmin(page);
-    const playerName = await ensureActivePlayer(page);
-    await page.goto("/admin/auction/console");
-    await expect(page.getByText(playerName)).toBeVisible();
+    const playerName = await putPlayerUpForBidding(page);
+    await expect(page.getByText(playerName).first()).toBeVisible();
 
-    await page.locator("#sale-team").click();
+    await page.locator("#sale-team").fill("Franchise Foxtrot");
     const option = page.getByRole("option", { name: /Franchise Foxtrot/ });
-    const optionText = await option.innerText();
+    // The visible purse is rounded to crore now; the exact rupee figure rides
+    // along as the tooltip on that figure, which is what this needs.
+    const exactPurse = await option.locator("[title^='Purse remaining']").getAttribute("title");
     await option.click();
 
-    // Deplete Foxtrot's purse down to ~100 (below the seeded analytics_price
-    // of 500) in a single sale, rather than needing dozens of sales.
-    const balance = Number(optionText.replace(/[^0-9]/g, ""));
-    await page.getByLabel("Amount").fill(String(balance - 100));
+    // Deplete Foxtrot's purse down to ~100 rupees (below the seeded
+    // analytics_price of 500) in a single sale, rather than needing dozens.
+    // The amount field is denominated in crore, so convert.
+    const balance = Number((exactPurse ?? "").replace(/[^0-9]/g, ""));
+    await page.getByLabel("Amount").fill(String((balance - 100) / 10_000_000));
     await page.getByRole("button", { name: "Record sale" }).click();
     await expect(page.getByText("Sale recorded.")).toBeVisible();
 

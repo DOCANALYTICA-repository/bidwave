@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { loginAsAdmin } from "../fixtures";
+import { loginAsAdmin, putPlayerUpForBidding } from "../fixtures";
 
 // Same benign Next.js dev-mode performance-marker noise filtered out by
 // tests/e2e/regression/back-button-crash-regression.spec.ts.
@@ -25,18 +25,14 @@ test.describe("auction console back-button with an active player", () => {
     const errors = collectPageErrors(page);
     await loginAsAdmin(page);
 
+    // Land on the Players tab first so `goBack()` has somewhere real to go —
+    // putPlayerUpForBidding navigates straight to the console, and without a
+    // prior entry the back step lands on about:blank.
     await page.goto("/admin/auction/players");
-    const activeRow = page.getByRole("row", { name: /Active/ }).first();
-    if ((await activeRow.count()) === 0) {
-      const availableRow = page.getByRole("row", { name: /Available/ }).first();
-      await availableRow.getByRole("button", { name: "Set active" }).click();
-      await expect(page.getByRole("row", { name: /Active/ }).first()).toBeVisible();
-    }
-
-    await page.goto("/admin/auction/console");
+    await putPlayerUpForBidding(page);
     // Confirms the lock badge's acquire effect actually ran (mounted with a
     // real active player), not just an empty console shell.
-    await expect(page.getByText(/No player is currently active/)).toHaveCount(0);
+    await expect(page.getByText(/No player is currently up for bidding/)).toHaveCount(0);
 
     await page.goBack();
     await page.waitForLoadState("networkidle");

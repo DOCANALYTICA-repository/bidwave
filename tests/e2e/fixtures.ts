@@ -71,3 +71,33 @@ export async function loginAsAdmin(page: Page) {
 export async function loginAsTeam(page: Page, slug: (typeof TEAM_SLUGS)[number] = "alpha") {
   await restoreSession(page, teamStoragePath(slug));
 }
+
+/**
+ * The console's player search — the only way to put a player up for bidding
+ * since the workflow moved onto the console itself (the Players tab is now a
+ * status record, with no "Set active" button).
+ */
+export const PLAYER_SEARCH_PLACEHOLDER = "Search unsold and available players…";
+
+/**
+ * Puts a player up for bidding from the console's own search and returns the
+ * name picked. Safe to call unconditionally: activatePlayerForBidding closes
+ * out whoever was already active, so this cannot trip
+ * `players_one_active_per_edition`.
+ *
+ * Leaves the page on /admin/auction/console with the sale form open.
+ */
+export async function putPlayerUpForBidding(page: Page): Promise<string> {
+  const { expect } = await import("@playwright/test");
+  await page.goto("/admin/auction/console");
+  const search = page.getByPlaceholder(PLAYER_SEARCH_PLACEHOLDER);
+  await search.click();
+  const firstOption = page.getByRole("option").first();
+  await expect(firstOption).toBeVisible();
+  // The option's first inner span is the name; the muted one under it is the pool.
+  const name = (await firstOption.locator("span > span").first().innerText()).trim();
+  await firstOption.click();
+  // The sale form appears optimistically, ahead of the server confirming.
+  await expect(page.getByRole("button", { name: "Record sale" })).toBeVisible();
+  return name;
+}

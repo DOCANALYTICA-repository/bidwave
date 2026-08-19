@@ -18,8 +18,15 @@ export default async function AdminAuctionConsolePage() {
     return <div className="p-10 text-ink-2">No active event edition.</div>;
   }
 
-  const [{ data: state }, { data: teams }, { data: recentSales }, { data: ruleSet }, { data: soldPlayers }, settings] =
-    await Promise.all([
+  const [
+    { data: state },
+    { data: teams },
+    { data: recentSales },
+    { data: ruleSet },
+    { data: soldPlayers },
+    { data: openPlayers },
+    settings,
+  ] = await Promise.all([
       supabase.from("auction_state").select("*").eq("event_edition_id", edition.id).maybeSingle(),
       supabase.from("public_team_purses").select("*").eq("event_edition_id", edition.id).order("name"),
       supabase
@@ -36,6 +43,21 @@ export default async function AdminAuctionConsolePage() {
         .select("current_team_id, role, pool, is_overseas")
         .eq("event_edition_id", edition.id)
         .eq("status", "sold"),
+      // The console's own player search. Sent down whole rather than queried
+      // per keystroke: it is ~140 rows at the point the lower pools start, so
+      // filtering in the browser is instant, and a lot clearing every ~40
+      // seconds cannot afford a network round-trip per character. 'recalled'
+      // rides along because it is an activatable state like 'available'.
+      supabase
+        .from("players")
+        .select("id, full_name, role, pool, base_price, status, is_overseas, updated_at")
+        .eq("event_edition_id", edition.id)
+        .in("status", ["available", "unsold", "recalled"])
+        // Pool names are prefixed 'POT nn · …' precisely so a lexical sort is
+        // bidding order (see the auction import script), which is also the most
+        // useful order for the unfiltered dropdown: what is coming up next.
+        .order("pool")
+        .order("full_name"),
       getSettingsForEdition(edition.id, ["auction_franchise_assignments"]),
     ]);
 
@@ -141,6 +163,7 @@ export default async function AdminAuctionConsolePage() {
       <ConsoleSaleEntry
         eventEditionId={edition.id}
         activePlayer={activePlayer ?? null}
+        openPlayers={openPlayers ?? []}
         biddingField={biddingField}
         auctionEnded={!!state?.ended_at}
         ruleSet={

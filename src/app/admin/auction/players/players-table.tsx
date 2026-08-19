@@ -2,7 +2,7 @@
 
 import { useActionState, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { DataTable, type DataTableColumn, StatusPill, Money } from "@/components/bidwave";
+import { DataTable, type DataTableColumn, StatusPill } from "@/components/bidwave";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,7 +15,7 @@ import {
   SheetFooter,
 } from "@/components/ui/sheet";
 import { adminUpsertPlayer, type PlayerActionState } from "@/app/admin/auction/players/actions";
-import { ActivatePlayerButton } from "@/app/admin/auction/console/console-sale-entry";
+import { formatCrore } from "@/lib/auction/format";
 import type { Database } from "@/lib/supabase/types";
 
 type Player = Database["public"]["Tables"]["players"]["Row"];
@@ -24,30 +24,50 @@ type Player = Database["public"]["Tables"]["players"]["Row"];
 // literal has to live here on the client side.
 const playerActionInitialState: PlayerActionState = { status: "idle" };
 
+/**
+ * The pool's status board. Ordered by the same 'POT nn · …' pool prefix the
+ * import script assigns, so reading top to bottom is reading bidding order.
+ */
+const STATUS_FILTERS = ["all", "available", "unsold", "active", "recalled", "sold"] as const;
+type StatusFilter = (typeof STATUS_FILTERS)[number];
+
 export function PlayersTable({
   players,
+  teamLabels,
   eventEditionId,
   roundId,
 }: {
   players: Player[];
+  /** team_id -> franchise alias (falling back to registered name). */
+  teamLabels: Record<string, string>;
   eventEditionId: string;
   roundId: string | null;
 }) {
   const [editing, setEditing] = useState<Player | "new" | null>(null);
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+
+  const counts = useMemo(() => {
+    const c: Record<string, number> = { all: players.length };
+    for (const p of players) c[p.status] = (c[p.status] ?? 0) + 1;
+    return c;
+  }, [players]);
 
   const filteredPlayers = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return players;
-    return players.filter(
-      (p) =>
+    return players.filter((p) => {
+      if (statusFilter !== "all" && p.status !== statusFilter) return false;
+      if (!q) return true;
+      return (
         p.full_name.toLowerCase().includes(q) ||
         p.role.toLowerCase().includes(q) ||
         p.pool.toLowerCase().includes(q) ||
         (p.ipl_team ?? "").toLowerCase().includes(q) ||
-        (p.nationality ?? "").toLowerCase().includes(q),
-    );
-  }, [players, search]);
+        (p.nationality ?? "").toLowerCase().includes(q) ||
+        (p.current_team_id ? (teamLabels[p.current_team_id] ?? "").toLowerCase().includes(q) : false)
+      );
+    });
+  }, [players, search, statusFilter, teamLabels]);
 
   const columns: DataTableColumn<Player>[] = [
     { key: "name", header: "Name", render: (p) => p.full_name },
@@ -55,13 +75,28 @@ export function PlayersTable({
     { key: "pool", header: "Pool", render: (p) => p.pool },
     {
       key: "base_price",
-      header: "Base price",
-      render: (p) => <Money value={p.base_price} />,
+      header: "Base",
+      render: (p) => <span className="font-mono tabular-nums">{formatCrore(p.base_price)}</span>,
     },
     {
       key: "status",
       header: "Status",
       render: (p) => <StatusPill status={p.status} />,
+    },
+    {
+      key: "sold_to",
+      header: "Sold to",
+      render: (p) =>
+        p.current_team_id ? (
+          <span>
+            {teamLabels[p.current_team_id] ?? "—"}
+            {p.sale_price != null && (
+              <span className="ml-1 font-mono text-xs tabular-nums text-ink-3">{formatCrore(p.sale_price)}</span>
+            )}
+          </span>
+        ) : (
+          "—"
+        ),
     },
     {
       key: "overseas",
@@ -72,14 +107,9 @@ export function PlayersTable({
       key: "actions",
       header: "",
       render: (p) => (
-        <div className="flex items-center gap-2">
-          {(p.status === "available" || p.status === "recalled") && (
-            <ActivatePlayerButton playerId={p.id} expectedUpdatedAt={p.updated_at} />
-          )}
-          <Button variant="tile" size="sm" onClick={() => setEditing(p)}>
-            Edit
-          </Button>
-        </div>
+        <Button variant="tile" size="sm" onClick={() => setEditing(p)}>
+          Edit
+        </Button>
       ),
     },
   ];
@@ -89,22 +119,35 @@ export function PlayersTable({
       <div className="flex items-center justify-between">
         <h2 className="font-heading text-xs font-semibold uppercase tracking-widest text-gold">
           {filteredPlayers.length} player{filteredPlayers.length === 1 ? "" : "s"}
-          {search.trim() && ` of ${players.length}`}
+          {(search.trim() || statusFilter !== "all") && ` of ${players.length}`}
         </h2>
         <Button size="sm" onClick={() => setEditing("new")}>
           Add player
         </Button>
       </div>
       <Input
-        placeholder="Search by name, role, pool, IPL team or nationality…"
+        placeholder="Search by name, role, pool, franchise, IPL team or nationality…"
         value={search}
         onChange={(e) => setSearch(e.target.value)}
       />
+      <div className="flex flex-wrap gap-2">
+        {STATUS_FILTERS.map((s) => (
+          <Button
+            key={s}
+            size="sm"
+            variant={statusFilter === s ? "default" : "outline"}
+            onClick={() => setStatusFilter(s)}
+          >
+            <span className="capitalize">{s}</span>
+            <span className="ml-1.5 font-mono text-xs tabular-nums opacity-70">{counts[s] ?? 0}</span>
+          </Button>
+        ))}
+      </div>
       <DataTable
         columns={columns}
         rows={filteredPlayers}
         rowKey={(p) => p.id}
-        emptyTitle={players.length === 0 ? "No players yet" : "No players match your search"}
+        emptyTitle={players.length === 0 ? "No players yet" : "No players match this filter"}
         emptyDescription={
           players.length === 0
             ? "Import a CSV/XLSX file above, or add players individually."

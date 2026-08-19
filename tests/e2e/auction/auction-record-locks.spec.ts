@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { loginAsAdmin, ADMIN_EMAIL } from "../fixtures";
+import { loginAsAdmin, ADMIN_EMAIL, putPlayerUpForBidding } from "../fixtures";
 
 /**
  * AUC-13..16: the record-lock is advisory only (doesn't gate record_sale/
@@ -18,17 +18,9 @@ test.describe("auction record locks", () => {
     const contextA = await browser.newContext();
     const pageA = await contextA.newPage();
     await loginAsAdmin(pageA);
-    await pageA.goto("/admin/auction/players");
+    // Need a player up for bidding for the console lock badge to even mount.
+    await putPlayerUpForBidding(pageA);
 
-    // Need an active player for the console lock badge to even mount.
-    const activeRow = pageA.getByRole("row", { name: /Active/ }).first();
-    if ((await activeRow.count()) === 0) {
-      const availableRow = pageA.getByRole("row", { name: /Available/ }).first();
-      await availableRow.getByRole("button", { name: "Set active" }).click();
-      await expect(pageA.getByRole("row", { name: /Active/ }).first()).toBeVisible();
-    }
-
-    await pageA.goto("/admin/auction/console");
     // First device: acquires the lock cleanly, so no "being edited" badge.
     await expect(pageA.getByText(/Being edited on/)).toHaveCount(0);
 

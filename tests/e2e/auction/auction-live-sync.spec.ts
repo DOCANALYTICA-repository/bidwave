@@ -1,5 +1,5 @@
-import { test, expect, type Page } from "@playwright/test";
-import { loginAsAdmin, loginAsTeam } from "../fixtures";
+import { test, expect } from "@playwright/test";
+import { loginAsAdmin, loginAsTeam, putPlayerUpForBidding } from "../fixtures";
 
 /**
  * LIVE-01..08/TEAM-AUC-02: principle #5 — realtime carries no private data,
@@ -10,17 +10,6 @@ import { loginAsAdmin, loginAsTeam } from "../fixtures";
  * pick up a sale recorded from a separate admin session, without a manual
  * page reload.
  */
-async function ensureActivePlayer(page: Page): Promise<string> {
-  await page.goto("/admin/auction/players");
-  const activeRow = page.getByRole("row", { name: /Active/ }).first();
-  if ((await activeRow.count()) > 0) {
-    return (await activeRow.getByRole("cell").first().innerText()).trim();
-  }
-  const availableRow = page.getByRole("row", { name: /Available/ }).first();
-  await availableRow.getByRole("button", { name: "Set active" }).click();
-  await expect(page.getByRole("row", { name: /Active/ }).first()).toBeVisible();
-  return (await page.getByRole("row", { name: /Active/ }).first().getByRole("cell").first().innerText()).trim();
-}
 
 test.describe("auction live sync", () => {
   test("a sale recorded by admin appears on /live and the team's /app/auction without a manual refresh", async ({
@@ -29,7 +18,7 @@ test.describe("auction live sync", () => {
     const adminContext = await browser.newContext();
     const adminPage = await adminContext.newPage();
     await loginAsAdmin(adminPage);
-    const playerName = await ensureActivePlayer(adminPage);
+    const playerName = await putPlayerUpForBidding(adminPage);
 
     const publicContext = await browser.newContext();
     const publicPage = await publicContext.newPage();
@@ -41,9 +30,8 @@ test.describe("auction live sync", () => {
     await teamPage.goto("/app/auction");
     await expect(teamPage.getByText(playerName)).toHaveCount(0);
 
-    await adminPage.goto("/admin/auction/console");
-    await expect(adminPage.getByText(playerName)).toBeVisible();
-    await adminPage.locator("#sale-team").click();
+    await expect(adminPage.getByText(playerName).first()).toBeVisible();
+    await adminPage.locator("#sale-team").fill("Franchise Charlie");
     await adminPage.getByRole("option", { name: /Franchise Charlie/ }).click();
     await adminPage.getByRole("button", { name: "Record sale" }).click();
     await expect(adminPage.getByText("Sale recorded.")).toBeVisible();
